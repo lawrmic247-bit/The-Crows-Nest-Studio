@@ -129,6 +129,7 @@ class App(tk.Tk):
         self.available_models=[]
         self.models_checked=False
         self.fact_review_complete=False
+        self.played_full_narration=False
         self.voice_approved=tk.BooleanVar(value=False)
         self.fact_window=None
         shell=tk.Frame(self,bg=INK)
@@ -589,6 +590,7 @@ class App(tk.Tk):
         self.pending_chat_job=None
         self.unlocked_step=0
         self.fact_review_complete=False
+        self.played_full_narration=False
         self.voice_approved.set(False)
         self.topic_var.set('')
         self.title_var.set('Untitled documentary')
@@ -662,6 +664,7 @@ class App(tk.Tk):
 
     def _narrator_changed(self):
         self.last_preview=None
+        self.played_full_narration=False
         self.voice_approved.set(False)
         self.unlocked_step=min(self.unlocked_step,2)
         self._sync_navigation()
@@ -671,6 +674,9 @@ class App(tk.Tk):
             return False
         if not self.last_preview or not Path(self.last_preview).is_file():
             self._block_step('GENERATE NARRATION FIRST — Listen to the complete voice track, then approve it here.')
+            return False
+        if not self.played_full_narration:
+            self._block_step('LISTEN FIRST — Play the generated narration in Step 3 before continuing.')
             return False
         if not self.voice_approved.get():
             self._block_step('LISTEN & APPROVE — Confirm the narration sounds right before continuing.')
@@ -864,6 +870,7 @@ class App(tk.Tk):
 
     def _script_edited(self):
         self.last_preview=None
+        self.played_full_narration=False
         self.review.set(False)
         self.voice_approved.set(False)
         self.publish_reviewed.set(False)
@@ -1239,6 +1246,7 @@ class App(tk.Tk):
         self.unlocked_step=max(self.unlocked_step,1)
         self.fact_review_complete=False
         self.voice_approved.set(False)
+        self.played_full_narration=False
         self.publish_reviewed.set(False)
         self.last_preview=None
         self._sync_navigation()
@@ -1391,6 +1399,7 @@ class App(tk.Tk):
             backend=self.player.play(path)
             self.status.set(f'Playing {Path(path).name} with {backend}. Click Stop audio to finish.')
             self._set_log('Audio playback started: '+str(path)+'\n')
+            return True
         except (PlaybackError, OSError, ValueError) as exc:
             self.status.set('Playback error. Check your sound output.')
             self._set_log('PLAYBACK ERROR: '+str(exc)+'\n')
@@ -1398,6 +1407,7 @@ class App(tk.Tk):
             messagebox.showerror('Voice playback failed',
                     str(exc)+'\n\nCheck the Windows sound output and run Check setup in Activity & settings.',
                     parent=self)
+            return False
 
     def stop_audio(self):
         self.player.stop()
@@ -1405,7 +1415,8 @@ class App(tk.Tk):
 
     def play_narration(self):
         if self.last_preview and self.last_preview.is_file():
-            self._play_audio(self.last_preview)
+            if self._play_audio(self.last_preview):
+                self.played_full_narration=True
             return
         self.tabs.select(self.voice_page)
         messagebox.showinfo('Generate narration first',
@@ -1640,6 +1651,7 @@ class App(tk.Tk):
                         self.tabs.select(self.write_page)
                     elif kind=='preview':
                         self.last_preview=Path(value)
+                        self.played_full_narration=False
                         self.voice_approved.set(False)
                         self._block_step('VOICE GENERATED — Listen to it, approve, then click Continue.')
                     elif kind=='rendered':
