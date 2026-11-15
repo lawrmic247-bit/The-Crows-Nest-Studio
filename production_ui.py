@@ -17,6 +17,12 @@ NAVY='#202a33'; PANEL='#303d49'; GOLD='#9fc5bc'; CREAM='#e0e6e8'; MUTED='#bac7ce
 
 
 class ProductionStudio(tk.Toplevel):
+    STYLE_CHOICES={
+        'Archival photographs':'archival',
+        'Cinematic photo motion':'motion',
+        'Hybrid documentary':'hybrid',
+        'Animated realism (local AI)':'ai_reenactment',
+    }
     def __init__(self,parent,*,on_load=None,default_voice='kokoro:am_onyx'):
         super().__init__(parent)
         self.title("The Crow's Nest | Episode Queue")
@@ -28,7 +34,7 @@ class ProductionStudio(tk.Toplevel):
         self.notes=tk.StringVar(value='')
         self.minutes=tk.IntVar(value=10)
         self.fmt=tk.StringVar(value='wide')
-        self.visual_style=tk.StringVar(value='archival')
+        self.visual_style=tk.StringVar(value='Archival photographs')
         self.want_full=tk.BooleanVar(value=True)
         self.want_shorts=tk.BooleanVar(value=True)
         self.want_tiktok=tk.BooleanVar(value=True)
@@ -67,7 +73,7 @@ class ProductionStudio(tk.Toplevel):
         self.tabs.add(create,text='1. Create episode')
         self.tabs.add(queue,text='2. Production queue')
         inbox=tk.Frame(self.tabs,bg=NAVY,padx=18,pady=18)
-        self.tabs.add(inbox,text='3. ChatGPT inbox')
+        self.tabs.add(inbox,text='3. INTEGRATIONS')
         self.queue_page=queue
         self._heading(create,'One topic. A full video and punchy short versions.',15)
         tk.Label(create,text='Include the topic, angle, key events, and style. '
@@ -82,7 +88,7 @@ class ProductionStudio(tk.Toplevel):
         basic=tk.Frame(create,bg=NAVY);basic.pack(fill='x',pady=(0,15))
         self._field(basic,'Length (minutes)',self.minutes,values=[1,2,3,5,8,10,12,15,20,30],width=9)
         self._field(basic,'Visual style',self.visual_style,
-                    values=['archival','motion','hybrid','ai_reenactment'],width=18)
+                    values=list(self.STYLE_CHOICES),width=25)
         deliver=tk.Frame(create,bg=PANEL,padx=14,pady=12)
         deliver.pack(fill='x',pady=(0,14))
         tk.Label(deliver,text='CREATE FROM THE SAME RESEARCH',bg=PANEL,fg=CREAM,
@@ -174,7 +180,7 @@ class ProductionStudio(tk.Toplevel):
         tk.Label(footer,textvariable=self.state,anchor='w',wraplength=900,
                  justify='left',bg=PANEL,fg=CREAM,
                  font=('Segoe UI',10)).pack(fill='x')
-        self._heading(inbox,'Send topics from ChatGPT',14)
+        self._heading(inbox,'Private ChatGPT job inbox',14)
         tk.Label(inbox,text='ChatGPT can place private episode requests in your Drive job inbox. '
                  'Install Google Drive for desktop, then choose its locally synced folder here once. '
                  'Studio scans that folder while it is open and imports new jobs.',
@@ -193,7 +199,7 @@ class ProductionStudio(tk.Toplevel):
                  justify='left').pack(anchor='w',pady=(0,12))
         ttk.Button(inbox,text='View production queue',
                    command=lambda:self.tabs.select(self.queue_page)).pack(anchor='w')
-        self._heading(inbox,'Optional: unlimited local AI reenactment clips',13)
+        self._heading(inbox,'Optional: local AI video generation (ComfyUI / Wan 2.2)',13)
         tk.Label(inbox,text='Works with compatible AMD/ROCm or NVIDIA/CUDA hardware '
                  'and a local ComfyUI workflow with a __CROWS_PROMPT__ placeholder. '
                  'Generates illustrative shots, not authentic historical footage.',
@@ -319,7 +325,7 @@ class ProductionStudio(tk.Toplevel):
             j=engine.create_job(self.prompt.get('1.0','end'),
                 minutes=self.minutes.get(),fmt=video_format,
                 model=self.model.get(),voice=self.voice.get(),notes_file=self.notes.get(),
-                auto_media=self.media.get(),visual_style=self.visual_style.get(),
+                auto_media=self.media.get(),visual_style=self.STYLE_CHOICES[self.visual_style.get()],
                 deliverables=deliverables)
         except Exception as exc:messagebox.showerror('Invalid production request',str(exc),parent=self);return
         self.refresh(j['id']);self.tabs.select(self.queue_page);self._log('Added '+j['id']+' to the production queue.')
