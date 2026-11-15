@@ -1,3 +1,54 @@
+# CROW'S NEST STUDIO 4.3 — ONE TOPIC / THREE VIDEOS
+
+## The simple workflow
+
+Open **1 · STORY → Create from one topic**. Give Studio the subject and select:
+- **Full YouTube documentary:** your selected length (1–30 minutes), 16:9.
+- **YouTube Short:** punchy condensed hook → stakes → payoff, 9:16; aimed at roughly 50–60 seconds.
+- **TikTok:** a second independently editable vertical story, 9:16; aimed at roughly 65–85 seconds.
+
+All three are grounded in the SAME long-form source script. With local Ollama available, Studio asks it for audience-specific rewrites while explicitly prohibiting invented facts, quotations, dates and events. If Ollama is unavailable for adaptation, Studio extracts original source sentences instead. Both routes remain UNVERIFIED. **Each output gets its own source/fact review**, narration audio and preview; nothing publishes automatically.
+
+### Visual styles
+
+| UI choice | How it actually works |
+|---|---|
+| Archival photographs | Searches candidate Creative Commons / public-domain photos via Wikimedia; rights and relevance still need human verification |
+| Cinematic photo motion | Subtle Ken Burns movement on authentic stills |
+| Hybrid documentary | Archival imagery plus restrained branded title cards |
+| Animated realism (local AI) | ComfyUI + user-supplied Wan 2.2 (or compatible) workflow generates a few clearly labeled illustrative short clips; falls back to archival without the model |
+
+**Do not misrepresent AI reenactments as real archival footage.** Generated shots receive an on-screen AI REENACTMENT label and separate media credits. The app does not claim that synthetic scenes depict actual persons or exact events.
+
+### Free, local, no subscription, no per-video cap
+
+**Recommended:** [ComfyUI](https://www.comfy.org/download) with [Wan 2.2 TI2V-5B](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B) (Apache 2.0). ComfyUI has official AMD ROCm support on Windows for supported AMD GPUs. Your PC still needs adequate compatible GPU/VRAM, storage, and time. The app cannot confirm your hardware until you run it there. No remote paid fallback is enabled.
+
+One-time setup:
+1. Install official ComfyUI Desktop for your GPU, select AMD ROCm on compatible Radeon or NVIDIA CUDA as appropriate, and download a compatible local Wan model.
+2. In ComfyUI, load a text-to-video or image-to-video workflow; set the **positive prompt** node's text to include `__CROWS_PROMPT__` exactly once. Export **API Format JSON** (not the ordinary UI workflow).
+3. Start ComfyUI's local server on `http://127.0.0.1:8188`. Do not expose its service to the internet.
+4. In **Create from one topic → 3. INTEGRATIONS**, choose your API-format workflow and click **Check local AI engine**.
+5. Select **Animated realism (local AI)** before starting a topic. Studio can queue up to three local illustrative clips while researching. Missing dependencies or failed scenes use archival/title-card fallbacks with clear messages.
+
+Generation is **not unlimited in duration per clip**; model checkpoints have GPU memory and duration limits. The app uses only a few short AI scenes per documentary, rather than promising a 10-minute fully AI-generated film.
+
+### Preview, pronunciation and upload
+
+Narration year/date correction, `corpsman` and `Marine Corps` corrections, and the editable private foreign-name dictionary remain enabled. Select each output from the production queue, review the written script, listen in **2 · VOICE**, check evidence in **3 · VERIFY & RENDER**, and inspect the final MP4 in **4 · WATCH & PUBLISH**.
+
+The **Continue to Buffer upload** button opens Buffer's web composer and your local export folder; it **does not directly upload files or post**. Select a channel, attach the MP4, and confirm publishing in Buffer yourself. This safeguards against accidental public posts.
+
+### Readability
+
+Open **5 · SETTINGS → Display comfort** to choose **Low-glare dark** or **Soft light**, plus 90–140% text scaling. Restart Studio to apply the preference throughout the main editor, voice tools, production queue and fact checker.
+
+### Update integrity
+
+Updates still come from SHA-256-verified GitHub Releases, and keep personal voices, source files, exports, projects and credentials private. The GitHub Actions workflow runs offline unit tests, headless dark/light UI checks and FFmpeg sample rendering. A green CI run establishes that those checks passed; it does **not** establish that voice output or local GPU video generation works on your particular Windows machine.
+
+---
+
 # THE CROW'S NEST STUDIO 4.2 — CHATGPT INBOX AND GUIDED DOCUMENTARY PRODUCTION
 
 ## Easy workflow
