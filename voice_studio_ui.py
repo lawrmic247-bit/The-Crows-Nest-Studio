@@ -3,7 +3,7 @@ from __future__ import annotations
 import os, subprocess, sys, tempfile, threading, tkinter as tk, wave
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk, scrolledtext
-from audio_playback import AudioPlayer, PlaybackError
+from narration import AudioPlayer, PlaybackError
 from voice_profiles import (PROFILE_DIR, APPDATA, DEFAULT_ACTING, create_profile,
                             get_audio,get_profile,list_profiles,clean_recording,update_profile)
 
