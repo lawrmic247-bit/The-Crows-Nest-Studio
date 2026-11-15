@@ -83,12 +83,12 @@ def import_chatgpt_job(path: Path, *, source_folder: Path | None=None) -> dict:
     path=Path(path).resolve()
     if source_folder is not None and path.parent != Path(source_folder).resolve():
         raise ValueError('Job file must be directly inside the configured inbox folder.')
-    if path.suffix.lower()!='.json' or not path.is_file() or path.stat().st_size>64_000:
-        raise ValueError('Select an existing ChatGPT job JSON under 64 KB.')
+    if path.suffix.lower()!='.json' or not path.is_file() or path.stat().st_size>120_000:
+        raise ValueError('Select an existing ChatGPT job JSON under 120 KB.')
     raw=json.loads(path.read_text(encoding='utf-8-sig'))
     if not isinstance(raw,dict) or raw.get('schema')!=JOB_SCHEMA:
         raise ValueError('Unrecognized ChatGPT job format. Expected crowsnest.job.v1.')
-    allowed={'schema','topic','title','minutes','format','visual_style','voice','auto_media','research_notes'}
+    allowed={'schema','topic','title','minutes','format','visual_style','voice','auto_media','research_notes','script','scenes'}
     if any(k not in allowed for k in raw):
         raise ValueError('Unrecognized fields in ChatGPT job request.')
     for job in list_jobs():
@@ -111,6 +111,47 @@ def import_chatgpt_job(path: Path, *, source_folder: Path | None=None) -> dict:
         notes_path=QUEUE/(job['id']+'_notes.txt')
         notes_path.write_text(notes,encoding='utf-8')
         job=change(job['id'],notes_file=str(notes_path))
+    # A ChatGPT-authored script can bypass the local Ollama drafting step.
+    # This never bypasses the normal fact-check and media-rights approval gate.
+    prepared=None
+    if 'scenes' in raw:
+        rows=raw['scenes']
+        if not isinstance(rows,list) or not 1<=len(rows)<=50:
+            raise ValueError('Prepared scenes must be a list with 1–50 sections.')
+        prepared=[]
+        for i,row in enumerate(rows,1):
+            if not isinstance(row,dict) or set(row)-{'heading','narration'}:
+                raise ValueError('Scene may contain only heading and narration.')
+            words=row.get('narration','')
+            heading=row.get('heading',f'Part {i}')
+            if not isinstance(words,str) or not isinstance(heading,str):
+                raise ValueError('Scene narration and heading must be text.')
+            words=words.strip()
+            if not 20<=len(words)<=12000:
+                raise ValueError('Prepared scene must have 20–12000 characters.')
+            prepared.append({'heading':heading.strip()[:90] or f'Part {i}',
+                             'narration':words})
+    elif 'script' in raw:
+        script=raw['script']
+        if not isinstance(script,str) or not 100<=len(script)<=85000:
+            raise ValueError('Prepared script must have 100–85000 characters.')
+        paragraphs=[x.strip() for x in re.split(r'\n\s*\n+',script) if x.strip()]
+        if not paragraphs:
+            raise ValueError('Prepared script is empty.')
+        if len(paragraphs)>50:
+            per=math.ceil(len(paragraphs)/50)
+            paragraphs=['\n\n'.join(paragraphs[i:i+per])
+                        for i in range(0,len(paragraphs),per)]
+        prepared=[{'heading':f'Part {i}','narration':part}
+                  for i,part in enumerate(paragraphs,1)]
+    if prepared is not None:
+        if sum(len(x['narration']) for x in prepared)>85000:
+            raise ValueError('Prepared script is too long.')
+        prepared_path=QUEUE/(job['id']+'_prepared.json')
+        atomic_json(prepared_path,{'scenes':prepared})
+        job=change(job['id'],prepared_scenes_file=str(prepared_path),
+                   progress='Prewritten script imported; ready for archival media and review.')
+
     title=raw.get('title','')
     if title:
         if not isinstance(title,str):
@@ -357,7 +398,17 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
     try:
         emit('drafting','Writing an unverified script with local Ollama...',0)
         def update(i,n,text):emit('drafting',f'Scene {i}/{n}: {text}',i)
-        scenes=script_generator(job,complete=update)
+        prepared_file=job.get('prepared_scenes_file','')
+        if prepared_file:
+            prepared_path=Path(prepared_file).resolve()
+            if prepared_path.parent!=QUEUE.resolve() or prepared_path.name!=job_id+'_prepared.json':
+                raise ValueError('Prepared script path must remain inside this job queue.')
+            scenes=json.loads(prepared_path.read_text(encoding='utf-8'))['scenes']
+            if not isinstance(scenes,list) or not scenes:
+                raise ValueError('Prepared script has no scenes.')
+            if progress:progress('Using the ChatGPT-prepared script; no Ollama draft needed.')
+        else:
+            scenes=script_generator(job,complete=update)
         job=get_job(job_id)
         credits=[];credit_path=''
         if job['auto_media']:
