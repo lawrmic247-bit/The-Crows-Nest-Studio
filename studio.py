@@ -143,6 +143,10 @@ def mk_scene(scene,idx,wav,duration,visual,out,wh,fps,visual_style='archival'):
         a=['ffmpeg','-nostdin','-hide_banner','-loglevel','error','-y','-loop','1','-framerate',str(fps),'-i',str(visual)]
     else:
         a=['ffmpeg','-nostdin','-hide_banner','-loglevel','error','-y','-stream_loop','-1','-i',str(visual)]
+    if 'AI-generated' in str(scene.get('visual_provenance','')):
+        vf+=(",drawtext=text='AI REENACTMENT - ILLUSTRATION':"
+             "x=22:y=22:fontsize=24:fontcolor=white:"
+             "box=1:boxcolor=black@0.76:boxborderw=12")
     a+=['-i',str(wav),'-vf',vf,'-af','apad','-t',f'{duration:.3f}','-r',str(fps),'-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-b:a','160k','-ar','48000','-ac','2','-movflags','+faststart',str(out)]
     shell(a,silent=True)
 
@@ -206,7 +210,7 @@ def render(manifest:Path,fmt:str,*,silent_demo=False,voice_model=DEFAULT_VOICE,c
             if captions and 'subtitles' in str(e).lower():
                 raise RuntimeError('Your FFmpeg build needs libass to burn subtitles. Re-run with --no-burn-captions; an SRT will still be produced.\n'+str(e))
             raise
-    publication={'title':data.get('title'),'summary':data.get('description'),'aiDisclosure':True,'officialAffiliation':False,'sources':data.get('sources',[]),'format':fmt,'visual_style':data.get('visual_style','archival'),'video':out.name,'subtitle':subtitles.name,'copyrightChecklist':'Human review of all source footage required','factCheckReport':str(fact_path) if fact_path else 'silent-demo; not fact-checked'}
+    publication={'title':data.get('title'),'summary':data.get('description'),'aiDisclosure':True,'officialAffiliation':False,'sources':data.get('sources',[]),'format':fmt,'visual_style':data.get('visual_style','archival'),'video':out.name,'subtitle':subtitles.name,'illustrativeAiScenes':[i+1 for i,scene in enumerate(data['scenes']) if 'AI-generated' in str(scene.get('visual_provenance',''))],'copyrightChecklist':'Human review of all source footage required','factCheckReport':str(fact_path) if fact_path else 'silent-demo; not fact-checked'}
     out.with_suffix('.publish.json').write_text(json.dumps(publication,indent=2),encoding='utf-8')
     print(f'FINISHED: {out} ({probe_duration(out):.1f}s). Captions: {subtitles}')
     return out
