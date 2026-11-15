@@ -323,8 +323,7 @@ class App(tk.Tk):
         self.build_button=ttk.Button(actions,text='START RESEARCH',
                             style='Studio.Primary.TButton',
                             command=self.start_production)
-        self.build_button.pack(side='left',padx=(0,12))
-        tk.Label(actions,text='Or use Continue at the bottom',
+        tk.Label(actions,text='Review your topic and use Continue at the bottom to start.',
                  bg=PANEL,fg=MUTED,font=('Segoe UI',10)).pack(side='left')
         self.pipeline_status=tk.StringVar(
             value='READY  •  Research and drafting run locally. Facts require approval.')
@@ -383,7 +382,7 @@ class App(tk.Tk):
         self.voice_combo=ttk.Combobox(voice,textvariable=self.voice_var,state='readonly',
                       values=list(VOICE_OPTIONS),width=65)
         self.voice_combo.pack(fill='x',pady=(6,18))
-        self.voice_var.trace_add('write',lambda *_:setattr(self,'last_preview',None))
+        self.voice_var.trace_add('write',lambda *_:self._narrator_changed())
         pace=tk.Frame(voice,bg=INK);pace.pack(fill='x',pady=(0,22))
         tk.Label(pace,text='Speaking pace',bg=INK,fg=CREAM,
                  font=('Segoe UI',11,'bold')).pack(side='left',padx=(0,13))
@@ -391,7 +390,7 @@ class App(tk.Tk):
         ttk.Combobox(pace,textvariable=self.speed_var,
                  values=['0.85','0.90','0.94','0.97','1.00','1.05','1.10'],
                  state='readonly',width=9).pack(side='left')
-        self.speed_var.trace_add('write',lambda *_:setattr(self,'last_preview',None))
+        self.speed_var.trace_add('write',lambda *_:self._narrator_changed())
         tk.Label(pace,text='0.97 gives a measured documentary pace',bg=INK,fg=MUTED,
                  font=('Segoe UI',10)).pack(side='left',padx=(14,0))
         actions=tk.Frame(voice,bg=INK);actions.pack(fill='x',pady=(0,12))
@@ -559,6 +558,9 @@ class App(tk.Tk):
         self.loaded_manifest_path=None
         self.loaded_production_job=None
         self.pending_chat_job=None
+        self.unlocked_step=0
+        self.fact_review_complete=False
+        self.voice_approved.set(False)
         self.topic_var.set('')
         self.title_var.set('Untitled documentary')
         self.script.delete('1.0','end')
@@ -574,6 +576,7 @@ class App(tk.Tk):
         self.rendered_label.set('No finished video selected. Render a documentary or choose an MP4.')
         self.chat_ready_button.configure(state='disabled')
         self.pipeline_status.set('READY  •  Describe your new documentary above.')
+        self.blocker_message.set('Step 1 of 5 — Brief the documentary.')
         self._go(0)
         self.topic_input.focus_set()
 
@@ -622,6 +625,12 @@ class App(tk.Tk):
         self._unlock(2)
         self._go(2)
         return True
+
+    def _narrator_changed(self):
+        self.last_preview=None
+        self.voice_approved.set(False)
+        self.unlocked_step=min(self.unlocked_step,2)
+        self._sync_navigation()
 
     def approve_voice_and_continue(self):
         if not self.fact_review_complete and not self.verify_script_and_continue():
@@ -741,6 +750,7 @@ class App(tk.Tk):
                     self.voice_install_button, self.sample_button,
                     self.render_button, self.build_button):
             btn.configure(state=state)
+        self._sync_navigation()
 
     def _run_task(self, name, runner):
         if self.busy:
@@ -821,6 +831,11 @@ class App(tk.Tk):
     def _script_edited(self):
         self.last_preview=None
         self.review.set(False)
+        self.voice_approved.set(False)
+        self.publish_reviewed.set(False)
+        self.fact_review_complete=False
+        self.unlocked_step=min(self.unlocked_step,1)
+        self._sync_navigation()
         if self.loaded_manifest_path:
             self.pipeline_status.set('SCRIPT CHANGED  •  Save, then re-check factual claims.')
 
@@ -837,6 +852,7 @@ class App(tk.Tk):
         wide=self.output_aspect.get()=='wide'
         self.wide.set(wide)
         self.short.set(not wide)
+        self.publish_reviewed.set(False)
 
     def start_production(self):
         topic=self.topic_var.get().strip()
@@ -1144,7 +1160,13 @@ class App(tk.Tk):
         self._loaded_script_snapshot=self.script.get('1.0','end').strip()
         self.active_variant.set({'full':'Full documentary','shorts':'YouTube Short',
                                  'tiktok':'TikTok'}.get(delivery,'Full documentary'))
-        self.pipeline_status.set('DRAFT READY  •  Check facts, then record narration.')
+        self.pipeline_status.set('DRAFT READY  •  First verify the claims, then record the narration.')
+        self.unlocked_step=max(self.unlocked_step,1)
+        self.fact_review_complete=False
+        self.voice_approved.set(False)
+        self.publish_reviewed.set(False)
+        self.last_preview=None
+        self._sync_navigation()
         self.output_aspect.set('wide' if delivery=='full' else 'short')
         self._sync_output_aspect()
         self.review.set(False);self.demo.set(False);self.last_preview=None
@@ -1326,9 +1348,14 @@ class App(tk.Tk):
     def render(self):
         formats=[fmt for fmt,value in [('short',self.short),('wide',self.wide)] if value.get()]
         if not formats:
-            messagebox.showwarning('Choose format','Select Shorts or YouTube widescreen.');return
+            self._block_step('Choose widescreen or vertical video format.')
+            return
+        if not self.demo.get() and not self.voice_approved.get():
+            self._block_step('VOICE APPROVAL REQUIRED — Listen to the narration and approve Step 3 first.')
+            return
         if not self.review.get() and not self.demo.get():
-            messagebox.showwarning('Review required','Confirm footage rights and source-led fact checking.');return
+            self._block_step('FOOTAGE RIGHTS REQUIRED — Review every visual and confirm media rights.')
+            return
         try:
             manifest=self._manifest();voice=self._voice();speed=self._speed()
         except Exception as e:
@@ -1344,8 +1371,9 @@ class App(tk.Tk):
         def work():
             if not demo:
                 doc=json.loads(manifest.read_text(encoding='utf-8'))
-                if any('audio' not in s for s in doc['scenes']):
-                    self._narrate(manifest,voice,speed)
+                if any(not scene.get('audio') or not Path(scene['audio']).is_file()
+                       for scene in doc['scenes']):
+                    raise ValueError('Narration is missing. Go back to Step 3 to generate it.')
             for fmt in formats:
                 cmd=[python_bin(), str(ROOT/'studio.py'),'render',str(manifest),'--format',fmt,'--voice',voice]
                 if demo:
@@ -1500,8 +1528,12 @@ class App(tk.Tk):
                         self.tabs.select(self.write_page)
                     elif kind=='preview':
                         self.last_preview=Path(value)
+                        self.voice_approved.set(False)
+                        self._block_step('VOICE GENERATED — Listen to it, approve, then click Continue.')
                     elif kind=='rendered':
                         self._set_rendered(Path(value))
+                        self._unlock(4)
+                        self._go(4)
                     elif kind=='chat_ready':
                         if value not in self.reviewed_chat_ids:
                             self.pending_chat_job=value
