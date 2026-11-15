@@ -41,6 +41,9 @@ def clone(profile_id:str,text:str,dest:Path, *, reference_is_cleaned:bool=False,
     kwargs={'text':text,'language':'English','ref_audio':str(ref),
             'x_vector_only_mode':not bool(transcript)}
     if transcript:kwargs['ref_text']=transcript
+    # Apply the same user pronunciation guide for direct Voice Studio previews.
+    from narration import normalize_for_speech
+    kwargs['text']=normalize_for_speech(kwargs['text'])
     wavs,sr=model.generate_voice_clone(**kwargs)
     import soundfile as sf
     dest.parent.mkdir(parents=True,exist_ok=True)
