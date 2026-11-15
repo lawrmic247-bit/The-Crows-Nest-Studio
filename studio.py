@@ -315,6 +315,37 @@ def render(manifest:Path,fmt:str,*,silent_demo=False,voice_model=DEFAULT_VOICE,c
         from fact_checker import require_clearance
         factual_script='\n\n'.join(scene.get('narration','') for scene in data['scenes'])
         fact_path=require_clearance(data['slug'],factual_script)
+        # Generate illustrative AI clips ONLY after factual review has been
+        # completed and final rendering has been explicitly authorized.
+        if data.get('visual_style')=='ai_reenactment' and data.get('production_job'):
+            if not any('AI-generated' in str(scene.get('visual_provenance',''))
+                       for scene in data['scenes']):
+                from production_engine import (
+                    get_job, _local_reenactments, MEDIA_DIR, atomic_json)
+                job=get_job(data['production_job'])
+                count=_local_reenactments(job,data['scenes'])
+                if count:
+                    data['ai_asset_review_required']=True
+                    data['ai_generated_clip_count']=count
+                    credit_path=MEDIA_DIR/job['id']/'media_credits.json'
+                    existing=[]
+                    if credit_path.is_file():
+                        try: existing=json.loads(credit_path.read_text(encoding='utf-8')).get('items',[])
+                        except (OSError,ValueError,TypeError): existing=[]
+                    for idx,scene in enumerate(data['scenes'],1):
+                        if 'AI-generated' in str(scene.get('visual_provenance','')):
+                            existing.append({
+                                'title':str(scene.get('heading','')),
+                                'local_path':str(scene.get('visual','')),
+                                'publisher':'Local ComfyUI / Wan-compatible workflow',
+                                'license':'Review local model and generated-media terms',
+                                'restrictions':'AI-generated illustration, NOT archival footage',
+                                'scene':idx})
+                    atomic_json(credit_path,{
+                        'notice':'Check archival provenance and generated-media terms before publishing.',
+                        'items':existing})
+                    atomic_json(manifest,data)
+                    print('Generated illustrative scenes require review before Buffer upload.',flush=True)
     wh=RESOLUTIONS[fmt];fps=30
     out=ROOT/'exports'/f"{data.get('slug','episode')}_{fmt}.mp4"
     out.parent.mkdir(exist_ok=True)
