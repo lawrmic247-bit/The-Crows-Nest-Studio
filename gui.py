@@ -774,7 +774,7 @@ class App(tk.Tk):
         dialog.configure(bg=INK)
         dialog.transient(self)
         settings=update_engine.load_settings()
-        appearance=tk.StringVar(value=settings.get('appearance','slate'))
+        appearance=tk.StringVar(value=('Soft light' if settings.get('appearance')=='soft_light' else 'Low-glare dark'))
         size=tk.StringVar(value=str(int(float(settings.get('ui_scale',1.0))*100)))
         tk.Label(dialog,text='Customize the workspace',bg=INK,fg=CREAM,
                  font=('Segoe UI',16,'bold')).pack(anchor='w',padx=22,pady=(22,7))
@@ -784,16 +784,14 @@ class App(tk.Tk):
                  justify='left').pack(anchor='w',padx=22,pady=(0,17))
         tk.Label(dialog,text='Appearance',bg=INK,fg=CREAM,
                  font=('Segoe UI',10,'bold')).pack(anchor='w',padx=22)
-        ttk.Combobox(dialog,textvariable=appearance,values=['slate','soft_light'],
+        ttk.Combobox(dialog,textvariable=appearance,values=['Low-glare dark','Soft light'],
                      state='readonly').pack(fill='x',padx=22,pady=(4,13))
         tk.Label(dialog,text='UI text size (%)',bg=INK,fg=CREAM,
                  font=('Segoe UI',10,'bold')).pack(anchor='w',padx=22)
         ttk.Combobox(dialog,textvariable=size,values=['90','100','115','125','140'],
                      state='readonly').pack(fill='x',padx=22,pady=(4,15))
         def save():
-            if appearance.get() not in ('slate','soft_light'):
-                return
-            settings['appearance']=appearance.get()
+            settings['appearance']=('soft_light' if appearance.get()=='Soft light' else 'slate')
             settings['ui_scale']=int(size.get())/100
             update_engine.save_settings(settings)
             dialog.destroy()
