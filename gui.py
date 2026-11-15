@@ -93,6 +93,10 @@ class App(tk.Tk):
                         foreground=CREAM,background=PANEL,padding=6)
         style.map('TCombobox',fieldbackground=[('readonly',FIELD_BG)],
                   foreground=[('readonly',CREAM)])
+        style.configure('TRadiobutton',font=('Segoe UI',11),background=INK,
+                        foreground=CREAM)
+        style.map('TRadiobutton',background=[('active',INK)],
+                  foreground=[('active',CREAM)])
         style.configure('TCheckbutton',font=('Segoe UI',11),background=INK,foreground=CREAM)
         style.map('TCheckbutton',background=[('active',INK)],
                   foreground=[('active',CREAM)])
@@ -176,7 +180,7 @@ class App(tk.Tk):
         tk.Label(headings,textvariable=self.section_title,bg=INK,fg=CREAM,
                  font=('Segoe UI',24,'bold'),anchor='w').pack(fill='x',pady=(3,0))
         ttk.Button(chrome,text='+ NEW FILM',style='Studio.Primary.TButton',
-                   command=lambda:self._go(0)).pack(side='right',padx=(15,0))
+                   command=self.new_film).pack(side='right',padx=(15,0))
         tk.Frame(workspace,bg=BORDER,height=1).pack(fill='x',padx=25,pady=(0,7))
         # Keep the notebook as the navigation state machine, but use a proper
         # production-sidebar rather than a second set of tabs above every page.
@@ -384,12 +388,20 @@ class App(tk.Tk):
         self._stage_heading(export,'03 / EDITORIAL CLEARANCE',
              'Verify before the camera rolls',
              'The manuscript and footage must pass review. AI drafts are never automatically verified.')
-        self._label(export,'Output format')
-        fmt=tk.Frame(export,bg=INK);fmt.pack(fill='x',pady=(5,19))
-        self.short=tk.BooleanVar(value=True)
-        self.wide=tk.BooleanVar(value=False)
-        ttk.Checkbutton(fmt,text='YouTube Short / TikTok • 9:16',variable=self.short).pack(side='left',padx=(0,20))
-        ttk.Checkbutton(fmt,text='Full YouTube documentary • 16:9',variable=self.wide).pack(side='left')
+        self._label(export,'Render aspect ratio')
+        fmt=tk.Frame(export,bg=INK)
+        fmt.pack(fill='x',pady=(5,10))
+        self.output_aspect=tk.StringVar(value='wide')
+        self.short=tk.BooleanVar(value=False)
+        self.wide=tk.BooleanVar(value=True)
+        ttk.Radiobutton(fmt,text='16:9 — Long-form film',variable=self.output_aspect,
+                        value='wide',command=self._sync_output_aspect).pack(side='left',padx=(0,22))
+        ttk.Radiobutton(fmt,text='9:16 — Short / TikTok',variable=self.output_aspect,
+                        value='short',command=self._sync_output_aspect).pack(side='left')
+        tk.Label(export,text='To change the story itself, switch Full / Short / TikTok under STORY. '
+                 'Aspect ratio only controls the final frame.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=800,
+                 justify='left').pack(anchor='w',pady=(0,17))
         self._label(export,'Optional footage folder')
         pathrow=tk.Frame(export,bg=INK);pathrow.pack(fill='x',pady=(6,7))
         self.folder=tk.StringVar(value=str(FOOTAGE))
@@ -489,6 +501,40 @@ class App(tk.Tk):
         self.after(150,self.poll)
         self.after(10000,self.poll_chat_inbox)
         self.protocol('WM_DELETE_WINDOW',self.close)
+
+    def new_film(self):
+        """Start clean without silently losing the current draft."""
+        current=self.script.get('1.0','end').strip()
+        if current and current!=self._loaded_script_snapshot:
+            answer=messagebox.askyesnocancel('Start a new film',
+                'Save the script you are editing before starting a new production?',
+                parent=self)
+            if answer is None:
+                return
+            if answer:
+                try:
+                    self._manifest()
+                except (ValueError,OSError) as exc:
+                    messagebox.showerror('Cannot save draft',str(exc),parent=self)
+                    return
+        self.loaded_manifest_path=None
+        self.loaded_production_job=None
+        self.pending_chat_job=None
+        self.topic_var.set('')
+        self.title_var.set('Untitled documentary')
+        self.script.delete('1.0','end')
+        self._loaded_script_snapshot=''
+        self.active_variant.set('Full documentary')
+        self.short.set(False)
+        self.wide.set(True)
+        self.output_aspect.set('wide')
+        self.review.set(False)
+        self.publish_reviewed.set(False)
+        self.last_preview=None
+        self.last_render=None
+        self.pipeline_status.set('READY  •  Describe your new documentary above.')
+        self._go(0)
+        self.topic_input.focus_set()
 
     def _go(self,index:int):
         if 0<=index<len(self.tabs.tabs()):
@@ -663,6 +709,11 @@ class App(tk.Tk):
             self.pipeline_status.set('SCRIPT SAVED  •  Continue to Fact checker or narration.')
         except (OSError,ValueError) as exc:
             messagebox.showwarning('Cannot save script',str(exc),parent=self)
+
+    def _sync_output_aspect(self):
+        wide=self.output_aspect.get()=='wide'
+        self.wide.set(wide)
+        self.short.set(not wide)
 
     def start_production(self):
         topic=self.topic_var.get().strip()
@@ -944,8 +995,8 @@ class App(tk.Tk):
         self.active_variant.set({'full':'Full documentary','shorts':'YouTube Short',
                                  'tiktok':'TikTok'}.get(delivery,'Full documentary'))
         self.pipeline_status.set('DRAFT READY  •  Check facts, then record narration.')
-        self.short.set(delivery in ('shorts','tiktok'))
-        self.wide.set(delivery=='full')
+        self.output_aspect.set('wide' if delivery=='full' else 'short')
+        self._sync_output_aspect()
         self.review.set(False);self.demo.set(False);self.last_preview=None
         for label,ident in VOICE_OPTIONS.items():
             if ident==__import__('production_engine').get_job(job_id)['voice']:
