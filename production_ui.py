@@ -540,10 +540,156 @@ class ProductionStudio(tk.Toplevel):
 
     def refresh(self,select=None):
         chosen=select or self.list.focus()
-        for item in self.list.get_children():self.list.delete(item)
-        for j in engine.list_jobs():
-            self.list.insert('', 'end',iid=j['id'],text=j['title'][:110],values=(j['status'],str(j['minutes'])+' min',j['created_at'][:16].replace('T',' ')))
-        if chosen in self.list.get_children():self.list.selection_set(chosen);self.list.focus(chosen)
+        view={'Needs work':'queue','Ready for review':'review',
+              'Completed / Library':'archive'}[self.stage_view.get()]
+        for item in self.list.get_children():
+            self.list.delete(item)
+        jobs=engine.list_stage_jobs(view)
+        readable={'queued':'Waiting to start','failed':'Needs retry',
+                  'needs_model':'Model needed','researching':'Researching',
+                  'drafting':'Writing','gathering_media':'Finding imagery',
+                  'rendering':'Rendering','awaiting_review':'Review script',
+                  'ready':'Ready to render','finished':'Rendered'}
+        for job in jobs:
+            label='In library' if job.get('archived') else readable.get(job['status'],job['status'])
+            self.list.insert('','end',iid=job['id'],text=job['title'][:88],
+                    values=(label,str(job['minutes'])+' min'))
+        ids=set(self.list.get_children())
+        if chosen in ids:
+            self.list.selection_set(chosen)
+            self.list.focus(chosen)
+        elif jobs:
+            self.list.selection_set(jobs[0]['id'])
+            self.list.focus(jobs[0]['id'])
+        counts={key:len(engine.list_stage_jobs(key))
+                for key in ('queue','review','archive')}
+        self.stage_summary.set(
+            f"{counts['queue']} waiting    •    {counts['review']} to review    •    {counts['archive']} in library")
+        self._sync_primary()
+
+    def _sync_primary(self,event=None):
+        selected=self.list.selection()
+        if not selected:
+            self.primary_btn.configure(text='NO PROJECT SELECTED',state='disabled')
+            self.help_line.set('This stage is empty. New drafts move here automatically.')
+            return
+        try:
+            job=engine.get_job(selected[0])
+        except (OSError,ValueError,KeyError):
+            self.primary_btn.configure(state='disabled')
+            return
+        status=job.get('status')
+        if self.busy or status in engine.RUNNING_JOB_STATES:
+            self.primary_btn.configure(text='IN PROGRESS',state='disabled')
+            self.help_line.set(job.get('progress','Working on this production.'))
+        elif status=='needs_model':
+            self.primary_btn.configure(text='SET UP WRITING MODEL',state='normal')
+            self.help_line.set('One-time local Ollama model setup; your research request is preserved.')
+        elif status in ('queued','failed'):
+            self.primary_btn.configure(text='RUN / RETRY PRODUCTION',state='normal')
+            self.help_line.set('Research and drafting run here. The finished draft moves to Ready for review.')
+        elif job.get('manifest'):
+            self.primary_btn.configure(text='CONTINUE IN MAIN STUDIO',state='normal')
+            self.help_line.set('Opens the chosen version in the story editor; no additional pop-up is needed.')
+        else:
+            self.primary_btn.configure(text='NO DRAFT AVAILABLE',state='disabled')
+            self.help_line.set('This production has no stored script.')
+
+    def primary_action(self):
+        if self.busy:
+            return
+        ident=self._selection()
+        if not ident:
+            return
+        job=engine.get_job(ident)
+        status=job.get('status')
+        if status=='needs_model':
+            self.model_setup(on_select=lambda model:self._run([ident]))
+        elif status in ('queued','failed'):
+            self._run([ident])
+        elif status not in engine.RUNNING_JOB_STATES:
+            self.open_draft()
+
+    def toggle_activity(self):
+        self.activity_visible=not self.activity_visible
+        if self.activity_visible:
+            self.log.pack(fill='x',pady=(8,0))
+        else:
+            self.log.pack_forget()
+
+    def delete_selected(self):
+        ident=self._selection()
+        if not ident:return
+        if self.busy:
+            messagebox.showwarning('Production running',
+                    'Finish active work before deleting a queue entry.',parent=self)
+            return
+        job=engine.get_job(ident)
+        if not messagebox.askyesno(
+            'Delete queue entry?',
+            'Remove "'+job['title'][:110]+'" from the production lists?\n\n'
+            'The saved scripts, research files, audio, imagery and rendered videos '
+            'will NOT be deleted. This only removes the tracking entry.',
+            parent=self):
+            return
+        try:
+            engine.remove_queue_job(ident)
+            self.refresh()
+            self._log('Removed queue entry. Original production files were preserved.')
+        except (ValueError,OSError) as exc:
+            messagebox.showerror('Cannot remove project',str(exc),parent=self)
+
+    def clear_waiting(self):
+        if self.busy:
+            messagebox.showinfo('Production running','Finish this operation before clearing the queue.',
+                                parent=self)
+            return
+        count=sum(j.get('status') in ('queued','failed','needs_model')
+                  for j in engine.list_jobs())
+        if not count:
+            self._log('Nothing waiting to clear.')
+            return
+        if not messagebox.askyesno('Clear waiting / failed queue?',
+            f'Remove {count} waiting or failed job(s) from the lists?\n\n'
+            'No active renders, scripts, sources, audio, or videos will be deleted.',
+            parent=self):
+            return
+        done=engine.clear_pending_queue()
+        self.refresh()
+        self._log(f'Cleared {done} waiting/failed queue entries. Original files preserved.')
+
+    def clear_completed(self):
+        count=sum(j.get('status')=='finished' for j in engine.list_jobs())
+        if not count:
+            self._log('No completed productions to clear.')
+            return
+        if not messagebox.askyesno('Clear completed list?',
+            f'Hide {count} rendered production(s) from the library list?\n\n'
+            'The finished MP4 files, audio and scripts remain saved on your computer.',
+            parent=self):
+            return
+        done=engine.clear_completed_from_queue()
+        self.refresh()
+        self._log(f'Cleared {done} completed entries. Exported videos remain on disk.')
+
+    def archive_selected(self):
+        ident=self._selection()
+        if not ident:return
+        try:
+            engine.archive_job(ident)
+            self.stage_view.set('Completed / Library')
+            self.refresh(ident)
+        except (ValueError,OSError) as exc:
+            messagebox.showwarning('Cannot move this production',str(exc),parent=self)
+
+    def restore_selected(self):
+        ident=self._selection()
+        if not ident:return
+        job=engine.restore_job(ident)
+        self.stage_view.set('Ready for review' if job['status'] in engine.REVIEW_JOB_STATES
+                            else 'Completed / Library')
+        self.refresh(ident)
+
 
     def choose_notes(self):
         p=filedialog.askopenfilename(parent=self,title='Source notes',filetypes=[('Plain text','*.txt'),('All files','*.*')])
