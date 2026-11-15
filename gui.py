@@ -208,6 +208,23 @@ class App(tk.Tk):
         tk.Label(workspace,textvariable=self.step_hint,bg=INK,fg=MUTED,
                  font=('Segoe UI',10),anchor='w',justify='left',
                  wraplength=940).pack(fill='x',padx=28,pady=(5,15))
+        # Fixed, consistent next-step controls: never below a long scroll page.
+        self.workflow_bar=tk.Frame(workspace,bg=PANEL,padx=23,pady=12)
+        self.workflow_bar.pack(side='bottom',fill='x',padx=15,pady=(0,8))
+        self.workflow_bar_right=tk.Frame(self.workflow_bar,bg=PANEL)
+        self.workflow_bar_right.pack(side='right')
+        self.back_button=ttk.Button(self.workflow_bar_right,text='← BACK',
+                                    command=self.back_step)
+        self.back_button.pack(side='left',padx=(0,10))
+        self.step_cta=ttk.Button(self.workflow_bar_right,text='RESEARCH & BUILD STORY  →',
+                                 style='Studio.Primary.TButton',
+                                 command=self.continue_step)
+        self.step_cta.pack(side='left')
+        self.blocker_message=tk.StringVar(value='Ready to brief a documentary.')
+        tk.Label(self.workflow_bar,textvariable=self.blocker_message,bg=PANEL,
+                 fg=MUTED,font=('Segoe UI',10),anchor='w',
+                 justify='left',wraplength=440).pack(side='left',fill='x',expand=True)
+
         self._page_scroll_canvases=[]
         self._page_scroll_containers=[]
         def page(label):
@@ -303,12 +320,12 @@ class App(tk.Tk):
                  font=('Segoe UI',10)).pack(anchor='w',pady=2)
         actions=tk.Frame(hero,bg=PANEL)
         actions.pack(fill='x')
-        self.build_button=ttk.Button(actions,text='RESEARCH & BUILD STORY',
+        self.build_button=ttk.Button(actions,text='START RESEARCH',
                             style='Studio.Primary.TButton',
                             command=self.start_production)
         self.build_button.pack(side='left',padx=(0,12))
-        ttk.Button(actions,text='Browse projects',
-                   command=self.open_production_studio).pack(side='left')
+        tk.Label(actions,text='Or use Continue at the bottom',
+                 bg=PANEL,fg=MUTED,font=('Segoe UI',10)).pack(side='left')
         self.pipeline_status=tk.StringVar(
             value='READY  •  Research and drafting run locally. Facts require approval.')
         tk.Label(hero,textvariable=self.pipeline_status,bg=PANEL,fg=MUTED,
@@ -388,7 +405,7 @@ class App(tk.Tk):
                    command=self.open_voice_studio).pack(side='left')
         ttk.Button(voice,text='Edit pronunciation guide',
                    command=self.edit_pronunciations).pack(anchor='w',pady=(0,3))
-        self.generate_button=tk.Button(voice,text='Generate full narration',
+        self.generate_button=tk.Button(voice,text='GENERATE VOICE TRACK',
                          command=self.generate_narration,bg=GOLD,fg=INK,
                          activebackground=ACTIVE_BG,activeforeground=ACTIVE_FG,relief='flat',
                          font=('Segoe UI',12,'bold'),padx=18,pady=11,cursor='hand2')
@@ -402,9 +419,8 @@ class App(tk.Tk):
                  'If the voice model is missing, install it once and try the sample again.',
                  bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=850,
                  justify='left').pack(anchor='w',pady=(20,0))
-        ttk.Button(voice,text='CONTINUE TO FACT CHECK',
-                   style='Studio.Primary.TButton',
-                   command=lambda:self._go(2)).pack(anchor='w',pady=(25,15))
+        ttk.Checkbutton(voice,text='I listened to the generated narration and approve the voice track',
+                        variable=self.voice_approved).pack(anchor='w',pady=(25,12))
 
         self._stage_heading(export,'STEP 4 / VISUALS & EDIT',
              'Verify before the camera rolls',
@@ -500,18 +516,19 @@ class App(tk.Tk):
                  wraplength=960).pack(fill='x')
         self._set_log('Studio '+update_engine.VERSION+' ready. Choose a step above.\n')
         hints=[
-            'Create one topic and generate a documentary plus vertical social versions.',
-            'Choose your narrator, hear the audio, then correct any difficult pronunciations.',
-            'Check EVERY factual claim and footage license before the final render.',
-            'Watch the entire video and approve it before opening Buffer.',
-            'Adjust the display, update Studio, or inspect its activity log.'
+            'Brief → research automatically. No manual source document required.',
+            'Edit the script, inspect sources and clear the Fact Checker before narration.',
+            'Choose a narrator, create and listen to audio, then confirm approval.',
+            'Review media rights and render the chosen aspect ratio.',
+            'Preview the entire MP4, approve the result and open Buffer.',
+            'Configure optional models, display and updates.'
         ]
         self.tabs.bind('<<NotebookTabChanged>>',
             lambda event:(self._sync_navigation(event),
                 self.step_hint.set(hints[self.tabs.index(self.tabs.select())])))
-        for number in range(1,6):
+        for number in range(1,7):
             self.bind_all(f'<Control-Key-{number}>',
-                lambda event,idx=number-1:self.tabs.select(idx))
+                lambda event,idx=number-1:self._go(idx))
         self.bind_all('<Control-n>',lambda event:self.open_production_studio())
         self.bind_all('<Escape>',lambda event:self.stop_audio())
         self.bind_all('<MouseWheel>',self._page_mouse_wheel,add='+')
@@ -560,9 +577,83 @@ class App(tk.Tk):
         self._go(0)
         self.topic_input.focus_set()
 
+    def _block_step(self,message:str):
+        self.blocker_message.set(message)
+        self.status.set(message)
+        self.step_hint.set(message)
+
+    def _unlock(self,stage:int):
+        self.unlocked_step=max(self.unlocked_step,min(stage,4))
+        self._sync_navigation()
+
+    def back_step(self):
+        current=self.tabs.index(self.tabs.select())
+        if current==5:
+            self._go(min(self.unlocked_step,4))
+        elif current>0:
+            self._go(current-1)
+
+    def continue_step(self):
+        current=self.tabs.index(self.tabs.select())
+        if current==0:
+            self.start_production()
+        elif current==1:
+            self.verify_script_and_continue()
+        elif current==2:
+            self.approve_voice_and_continue()
+        elif current==3:
+            self.render()
+        elif current==4:
+            self.open_buffer_upload()
+        else:
+            self._go(min(self.unlocked_step,4))
+
+    def verify_script_and_continue(self):
+        try:
+            manifest=self._manifest()
+            doc=json.loads(manifest.read_text(encoding='utf-8'))
+            script='\n\n'.join(item.get('narration','') for item in doc['scenes'])
+            require_clearance(doc['slug'],script)
+        except (ValueError,OSError,KeyError) as exc:
+            self._block_step('SOURCE REVIEW NEEDED — '+str(exc)[:190])
+            return False
+        self.fact_review_complete=True
+        self._loaded_script_snapshot=self.script.get('1.0','end').strip()
+        self._unlock(2)
+        self._go(2)
+        return True
+
+    def approve_voice_and_continue(self):
+        if not self.fact_review_complete and not self.verify_script_and_continue():
+            return False
+        if not self.last_preview or not Path(self.last_preview).is_file():
+            self._block_step('GENERATE NARRATION FIRST — Listen to the complete voice track, then approve it here.')
+            return False
+        if not self.voice_approved.get():
+            self._block_step('LISTEN & APPROVE — Confirm the narration sounds right before continuing.')
+            return False
+        try:
+            doc=json.loads(self._manifest().read_text(encoding='utf-8'))
+            if any(not scene.get('audio') or not Path(scene['audio']).is_file()
+                   for scene in doc['scenes']):
+                self._block_step('AUDIO INCOMPLETE — Regenerate narration to cover all scenes.')
+                return False
+        except (OSError,ValueError,KeyError) as exc:
+            self._block_step('AUDIO ERROR — '+str(exc)[:180])
+            return False
+        self._unlock(3)
+        self._go(3)
+        return True
+
     def _go(self,index:int):
-        if 0<=index<len(self.tabs.tabs()):
-            self.tabs.select(index)
+        if not 0<=index<len(self.tabs.tabs()):
+            return
+        if index!=5 and index>self.unlocked_step:
+            self._block_step(
+                'COMPLETE THE CURRENT STEP FIRST — Use the Continue button at the bottom.')
+            return
+        self.tabs.select(index)
+        self._sync_navigation()
 
     def _sync_navigation(self,event=None):
         try:
@@ -572,9 +663,17 @@ class App(tk.Tk):
             self.section_title.set(title)
             for i,button in enumerate(self.nav_buttons):
                 chosen=i==index
+                available=(i==5 or i<=self.unlocked_step)
                 button.configure(bg=SURFACE_2 if chosen else NAV_BG,
                                  fg=CREAM if chosen else MUTED,
+                                 state='normal' if available else 'disabled',
                                  activebackground=SURFACE_2)
+            names=('RESEARCH & BUILD STORY  →','VERIFY SCRIPT & CONTINUE  →',
+                   'APPROVE AUDIO & CONTINUE  →','RENDER THE VIDEO  →',
+                   'APPROVE & OPEN BUFFER  →','BACK TO YOUR FILM  →')
+            self.step_cta.configure(text=names[index],
+                                    state='disabled' if self.busy else 'normal')
+            self.back_button.configure(state='disabled' if index==0 else 'normal')
         except (tk.TclError,IndexError):
             pass
 
