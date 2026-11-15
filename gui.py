@@ -168,9 +168,13 @@ class App(tk.Tk):
         tk.Frame(sidebar,bg=BORDER,height=1).pack(fill='x',padx=20,pady=(0,16))
         tk.Label(sidebar,text='PROJECT LIBRARY',bg=NAV_BG,fg=MUTED,
                  font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',padx=24)
-        ttk.Button(sidebar,text='Open films and queue',
+        ttk.Button(sidebar,text='Open project library',
                    style='Studio.Sidebar.TButton',
-                   command=self.open_production_studio).pack(fill='x',padx=20,pady=(9,18))
+                   command=self.open_production_studio).pack(fill='x',padx=20,pady=(9,7))
+        self.library_activity=tk.StringVar(value='Checking production stages...')
+        tk.Label(sidebar,textvariable=self.library_activity,bg=NAV_BG,fg=MUTED,
+                 font=('Segoe UI',9),justify='left',anchor='w',
+                 wraplength=195).pack(fill='x',padx=23,pady=(0,14))
         tk.Label(sidebar,text='VERSION '+update_engine.VERSION+'  /  LOCAL FIRST',
                  bg=NAV_BG,fg=MUTED,font=('Segoe UI',8),
                  anchor='w').pack(fill='x',padx=24,pady=(0,22))
@@ -508,6 +512,7 @@ class App(tk.Tk):
         self.after(1800,self.auto_update_check)
         self.after(150,self.poll)
         self.after(10000,self.poll_chat_inbox)
+        self.after(600,self._refresh_library_summary)
         self.protocol('WM_DELETE_WINDOW',self.close)
 
     def new_film(self):
@@ -917,6 +922,17 @@ class App(tk.Tk):
             self.status.set('Buffer opened. Attach your MP4, choose the channels, then publish in Buffer.')
         except (OSError,tk.TclError) as exc:
             messagebox.showerror('Buffer handoff error',str(exc),parent=self)
+
+    def _refresh_library_summary(self):
+        try:
+            queue_count=len(production_engine.list_stage_jobs('queue'))
+            ready_count=len(production_engine.list_stage_jobs('review'))
+            self.library_activity.set(
+                f'{queue_count} in production  ·  {ready_count} ready for review')
+        except (OSError,ValueError,KeyError):
+            self.library_activity.set('Project library available')
+        if self.winfo_exists():
+            self.after(20000,self._refresh_library_summary)
 
     def open_production_studio(self):
         if self.production_window is not None and self.production_window.winfo_exists():
