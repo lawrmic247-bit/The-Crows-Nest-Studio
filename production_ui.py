@@ -517,7 +517,7 @@ class ProductionStudio(tk.Toplevel):
                     self._log('Writing model must be selected in Step 1 before imported jobs start.')
                 else:
                     for ident in ids:
-                        engine.change(ident,model=selected)
+                        engine.change(ident,model=selected,model_locked=True)
                     self._run(ids)
         elif not silent:self._log('No new ChatGPT jobs in this folder.')
         if errors and not silent:
@@ -760,6 +760,7 @@ class ProductionStudio(tk.Toplevel):
                 auto_media=self.media.get(),visual_style=self.STYLE_CHOICES[self.visual_style.get()],
                 deliverables=deliverables)
         except Exception as exc:messagebox.showerror('Invalid production request',str(exc),parent=self);return
+        engine.change(j['id'],model_locked=True)
         self.stage_view.set('Needs work')
         self.refresh(j['id']);self.tabs.select(self.queue_page)
         self._log('Created '+j['id']+'. It will move to review when the draft is ready.')
@@ -787,7 +788,7 @@ class ProductionStudio(tk.Toplevel):
             self._log('No verified writing model selected. Go to Step 1 and choose one.')
             return
         for ident in ids:
-            engine.change(ident,model=configured)
+            engine.change(ident,model=configured,model_locked=True)
         self.busy=True
         self._sync_primary()
         def worker():
