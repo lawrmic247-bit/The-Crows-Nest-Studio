@@ -1,6 +1,7 @@
 """Source ledger and evidence review window for The Crow's Nest Studio."""
 from __future__ import annotations
 import tkinter as tk
+import json
 import webbrowser
 import update_engine
 from pathlib import Path
@@ -18,7 +19,7 @@ GREY='#50695f' if SOFT_LIGHT else '#bac7ce'
 HEADING_BG='#b7cbbb' if SOFT_LIGHT else '#425260'
 
 class FactCheckDialog(tk.Toplevel):
-    def __init__(self,parent,slug:str,title:str,script:str):
+    def __init__(self,parent,slug:str,title:str,script:str,source_leads:Path|None=None):
         super().__init__(parent)
         self.title(f'Fact Check — {title}')
         self.geometry('1020x760')
@@ -32,6 +33,7 @@ class FactCheckDialog(tk.Toplevel):
         style.map('Evidence.Treeview',background=[('selected','#48655e')],
                   foreground=[('selected','#ffffff')])
         self.report=sync_report(slug,title,script)
+        self.source_leads=Path(source_leads) if source_leads else None
         self.selected=None
         self.status_var=tk.StringVar(value='unreviewed')
         self.url_var=tk.StringVar()
@@ -88,6 +90,7 @@ class FactCheckDialog(tk.Toplevel):
         foot=tk.Frame(self,bg=PANEL,padx=16,pady=9);foot.pack(fill='x')
         tk.Button(foot,text='Save claim review',command=self.save_claim,bg=GOLD,fg=DARK,padx=12,pady=7,
                   relief='flat',font=('Segoe UI',10,'bold')).pack(side='left',padx=(0,7))
+        ttk.Button(foot,text='Discovered sources',command=self.open_research_sources).pack(side='left',padx=3)
         ttk.Button(foot,text='Find official sources',command=lambda:self.research('official')).pack(side='left',padx=3)
         ttk.Button(foot,text='Find other sources',command=lambda:self.research('other')).pack(side='left',padx=3)
         ttk.Button(foot,text='Export source report',command=self.export).pack(side='left',padx=3)
@@ -143,6 +146,83 @@ class FactCheckDialog(tk.Toplevel):
                 messagebox.showinfo('Source review complete',
                     'Every claim has a source-led review or an explained editorial exemption. Recheck new edits before rendering.',
                     parent=self)
+
+    def open_research_sources(self):
+        """Show source-discovery results without implying they verify a claim."""
+        if self.source_leads is None or not self.source_leads.is_file():
+            messagebox.showinfo('Research leads not found',
+                'No automatic source discovery exists for this script. '
+                'Use Find official sources to research the selected claim.',parent=self)
+            return
+        try:
+            data=json.loads(self.source_leads.read_text(encoding='utf-8'))
+            rows=data.get('retrieved_sources',[])
+            if not isinstance(rows,list):raise ValueError('Invalid source list')
+            rows=[r for r in rows if isinstance(r,dict) and safe_url(str(r.get('url','')))]
+        except (OSError,ValueError,TypeError) as exc:
+            messagebox.showwarning('Cannot read source records',str(exc),parent=self)
+            return
+        if not rows:
+            messagebox.showinfo('No retrieved sources',
+                'Automatic research did not return source records. '
+                'Use Find official sources and review the original pages.',parent=self)
+            return
+        viewer=tk.Toplevel(self)
+        viewer.title('Research source leads — not verified')
+        viewer.geometry('830x610')
+        viewer.minsize(620,450)
+        viewer.configure(bg=DARK)
+        tk.Label(viewer,text='Research leads to inspect',bg=DARK,fg=LIGHT,
+                 font=('Segoe UI',16,'bold')).pack(anchor='w',padx=16,pady=(14,4))
+        tk.Label(viewer,text='These links came from public research catalogs. '
+                 'None automatically verifies a claim; open the original document '
+                 'and check the exact wording before approving it.',
+                 bg=DARK,fg=GREY,font=('Segoe UI',10),wraplength=770,
+                 justify='left').pack(anchor='w',padx=16,pady=(0,12))
+        listing=tk.Frame(viewer,bg=DARK)
+        listing.pack(fill='both',expand=True,padx=16,pady=(0,10))
+        source_list=tk.Listbox(listing,exportselection=False,height=10,
+                   bg=PANEL,fg=LIGHT,selectbackground=GOLD,
+                   selectforeground=DARK,font=('Segoe UI',11))
+        bar=ttk.Scrollbar(listing,orient='vertical',command=source_list.yview)
+        source_list.configure(yscrollcommand=bar.set)
+        bar.pack(side='right',fill='y')
+        source_list.pack(side='left',fill='both',expand=True)
+        for source in rows:
+            source_list.insert('end',f"{source.get('publisher','Source')}: "
+                               f"{str(source.get('title',''))[:130]}")
+        current_url=tk.StringVar()
+        detail=tk.Text(viewer,height=6,wrap='word',bg=PANEL,fg=LIGHT,
+                       relief='flat',padx=10,pady=9,font=('Segoe UI',10))
+        detail.pack(fill='x',padx=16,pady=(0,10))
+        detail.configure(state='disabled')
+        def selected():
+            if not source_list.curselection():return None
+            item=rows[int(source_list.curselection()[0])]
+            current_url.set(str(item['url']))
+            detail.configure(state='normal')
+            detail.delete('1.0','end')
+            detail.insert('1.0',str(item.get('excerpt') or
+                          'No summary available. Inspect the original catalog page.'))
+            detail.configure(state='disabled')
+            return item
+        def open_source(event=None):
+            item=selected()
+            if item:webbrowser.open(item['url'])
+        def use_url():
+            item=selected()
+            if not item:return
+            self.url_var.set(item['url'])
+            self.confirm.set(False)
+            viewer.destroy()
+        source_list.bind('<<ListboxSelect>>',lambda e:selected())
+        source_list.bind('<Double-Button-1>',open_source)
+        buttons=tk.Frame(viewer,bg=DARK);buttons.pack(fill='x',padx=16,pady=(0,13))
+        ttk.Button(buttons,text='Open source page',command=open_source).pack(side='left',padx=(0,9))
+        ttk.Button(buttons,text='Use URL for selected claim',command=use_url).pack(side='left')
+        ttk.Button(buttons,text='Close',command=viewer.destroy).pack(side='right')
+        source_list.selection_set(0);selected()
+        viewer.transient(self)
 
     def research(self,kind):
         if self.selected is None:return
