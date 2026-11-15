@@ -274,16 +274,6 @@ class App(tk.Tk):
                  'a documentary with short-form companion stories.',
                  bg=PANEL,fg=MUTED,font=('Segoe UI',11),wraplength=740,
                  justify='left',anchor='w').pack(fill='x',pady=(0,21))
-        tk.Label(hero,text='WHAT IS THE FILM ABOUT?',bg=PANEL,fg=MUTED,
-                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',pady=(0,7))
-        self.topic_var=tk.StringVar()
-        self.topic_input=tk.Entry(hero,textvariable=self.topic_var,
-                   bg=FIELD_BG,fg=CREAM,insertbackground=CREAM,relief='flat',
-                   borderwidth=0,font=('Segoe UI',15))
-        self.topic_input.pack(fill='x',ipady=12)
-        tk.Label(hero,text='Example: Donald E. Ballard, Navy corpsman and Medal of Honor recipient',
-                 bg=PANEL,fg=MUTED,font=('Segoe UI',9),
-                 anchor='w').pack(fill='x',pady=(8,17))
         model_card=tk.Frame(hero,bg=SURFACE_2,padx=14,pady=13)
         model_card.pack(fill='x',pady=(0,17))
         tk.Label(model_card,text='REQUIRED FIRST  ·  SCRIPT-WRITING MODEL',
@@ -308,6 +298,16 @@ class App(tk.Tk):
                  anchor='w',justify='left',wraplength=660).pack(fill='x',pady=(8,0))
         self.model_combo.bind('<<ComboboxSelected>>',self._save_selected_model)
 
+        tk.Label(hero,text='WHAT IS THE FILM ABOUT?',bg=PANEL,fg=MUTED,
+                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',pady=(0,7))
+        self.topic_var=tk.StringVar()
+        self.topic_input=tk.Entry(hero,textvariable=self.topic_var,
+                   bg=FIELD_BG,fg=CREAM,insertbackground=CREAM,relief='flat',
+                   borderwidth=0,font=('Segoe UI',15))
+        self.topic_input.pack(fill='x',ipady=12)
+        tk.Label(hero,text='Example: Donald E. Ballard, Navy corpsman and Medal of Honor recipient',
+                 bg=PANEL,fg=MUTED,font=('Segoe UI',9),
+                 anchor='w').pack(fill='x',pady=(8,17))
         controls=tk.Frame(hero,bg=PANEL)
         controls.pack(fill='x',pady=(0,17))
         left=tk.Frame(controls,bg=PANEL)
