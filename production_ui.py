@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import threading
+import webbrowser
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog,messagebox,scrolledtext,ttk
@@ -20,6 +21,109 @@ GOLD='#477669' if SOFT_LIGHT else '#9fc5bc'
 CREAM='#23382f' if SOFT_LIGHT else '#e0e6e8'
 MUTED='#50695f' if SOFT_LIGHT else '#bac7ce'
 HEADING_BG='#b7cbbb' if SOFT_LIGHT else '#425260'
+
+
+def open_text_model_setup(parent,*,on_select=None):
+    """One-click, user-approved model management; no terminal required."""
+    window=tk.Toplevel(parent)
+    window.title("Narration Script Model Setup")
+    window.geometry("670x460")
+    window.minsize(540,385)
+    window.configure(bg=NAVY)
+    window.transient(parent)
+    selection=tk.StringVar(value="")
+    state=tk.StringVar(value="Checking installed Ollama models...")
+    busy={"value":False}
+    tk.Label(window,text="Local script-writing model",bg=NAVY,fg=CREAM,
+             font=("Segoe UI",18,"bold")).pack(anchor="w",padx=20,pady=(20,7))
+    tk.Label(window,
+             text="Studio's research works independently, but writing full scripts "
+                  "needs an Ollama text model. Choose one already on your PC, or "
+                  "install the recommended smaller model once. No paid credits.",
+             bg=NAVY,fg=MUTED,font=("Segoe UI",10),wraplength=610,
+             justify="left").pack(anchor="w",padx=20,pady=(0,17))
+    tk.Label(window,text="Models installed on your computer",bg=NAVY,fg=CREAM,
+             font=("Segoe UI",11,"bold")).pack(anchor="w",padx=20,pady=(0,6))
+    combo=ttk.Combobox(window,textvariable=selection,state="readonly")
+    combo.pack(fill="x",padx=20,pady=(0,16))
+    tk.Label(window,textvariable=state,bg=NAVY,fg=CREAM,
+             font=("Segoe UI",10),wraplength=610,justify="left").pack(
+                 anchor="w",padx=20,pady=(0,17))
+    buttons=tk.Frame(window,bg=NAVY)
+    buttons.pack(fill="x",padx=20)
+    def handle_models(models):
+        combo["values"]=models
+        configured=update_engine.load_settings().get("ollama_model","")
+        if models:
+            selection.set(engine.select_local_model(configured,installed=models))
+            state.set(str(len(models))+" installed model(s). Select one and press Use model.")
+        else:
+            state.set("Ollama is running, but no text model is installed. "
+                      "Click Install recommended model.")
+    def refresh():
+        if busy["value"]:return
+        state.set("Checking Ollama...")
+        def worker():
+            try:
+                models=engine.list_local_models()
+                window.after(0,lambda:handle_models(models))
+            except engine.OllamaSetupError as exc:
+                window.after(0,lambda text=str(exc):state.set(text))
+        threading.Thread(target=worker,daemon=True).start()
+    def choose():
+        if busy["value"]:return
+        model=selection.get().strip()
+        if not model:
+            messagebox.showwarning("No installed model",
+                "Install a local model first, or refresh the list.",parent=window)
+            return
+        settings=update_engine.load_settings()
+        settings["ollama_model"]=model
+        update_engine.save_settings(settings)
+        window.destroy()
+        if on_select:on_select(model)
+    def install():
+        if busy["value"]:return
+        if not messagebox.askyesno("Download text model?",
+                "Install qwen3:4b with Ollama? This is a one-time "
+                "multi-gigabyte download to your computer. It is free, "
+                "but uses your storage and internet connection.",parent=window):
+            return
+        busy["value"]=True
+        download.configure(state="disabled")
+        state.set("Starting model download. Studio will show progress here...")
+        def worker():
+            try:
+                model=engine.pull_local_model(
+                    engine.RECOMMENDED_TEXT_MODEL,
+                    progress=lambda note:window.after(
+                        0,lambda msg=note:state.set(msg)))
+                def success():
+                    busy["value"]=False
+                    download.configure(state="normal")
+                    handle_models(engine.list_local_models())
+                    selection.set(model)
+                    state.set(model+" installed. Click Use model to continue.")
+                window.after(0,success)
+            except (engine.OllamaSetupError,OSError,ValueError) as exc:
+                def failure(msg=str(exc)):
+                    busy["value"]=False
+                    download.configure(state="normal")
+                    state.set(msg)
+                window.after(0,failure)
+        threading.Thread(target=worker,daemon=True).start()
+    ttk.Button(buttons,text="Use selected model",command=choose).pack(
+        side="left",padx=(0,9),pady=(0,12))
+    ttk.Button(buttons,text="Refresh list",command=refresh).pack(
+        side="left",padx=(0,9))
+    download=ttk.Button(window,text="Install recommended qwen3:4b",
+                        command=install)
+    download.pack(anchor="w",padx=20,pady=(0,12))
+    ttk.Button(window,text="Get Ollama for Windows",
+        command=lambda:webbrowser.open("https://ollama.com/download/windows")).pack(
+            anchor="w",padx=20,pady=(0,12))
+    refresh()
+    return window
 
 
 class ProductionStudio(tk.Toplevel):
@@ -47,7 +151,7 @@ class ProductionStudio(tk.Toplevel):
         self.output_choice=tk.StringVar(value='Full documentary')
         self.workflow_path=tk.StringVar(value=update_engine.load_settings().get('comfyui_workflow',''))
         self.inbox_dir=tk.StringVar(value=update_engine.load_settings().get('chatgpt_inbox',''))
-        self.model=tk.StringVar(value='qwen3:8b')
+        self.model=tk.StringVar(value=update_engine.load_settings().get('ollama_model','qwen3:4b'))
         self.voice=tk.StringVar(value=default_voice)
         self.media=tk.BooleanVar(value=True)
         self.start_immediately=tk.BooleanVar(value=True)
@@ -112,6 +216,8 @@ class ProductionStudio(tk.Toplevel):
         self._field(basic,'Length (minutes)',self.minutes,values=[1,2,3,5,8,10,12,15,20,30],width=9)
         self._field(basic,'Visual style',self.visual_style,
                     values=list(self.STYLE_CHOICES),width=25)
+        ttk.Button(create,text="Check / install text model",
+                   command=self.model_setup).pack(anchor="w",pady=(0,13))
         deliver=tk.Frame(create,bg=PANEL,padx=14,pady=12)
         deliver.pack(fill='x',pady=(0,14))
         tk.Label(deliver,text='CREATE FROM THE SAME RESEARCH',bg=PANEL,fg=CREAM,
@@ -191,6 +297,8 @@ class ProductionStudio(tk.Toplevel):
         self.selected_btn=ttk.Button(row,text='Retry selected',command=self.run_selected)
         self.selected_btn.pack(side='left',padx=(0,8))
         ttk.Button(row,text='Refresh',command=self.refresh).pack(side='left')
+        ttk.Button(row,text="Text model setup",
+                   command=self.model_setup).pack(side="left",padx=(9,0))
         row=tk.Frame(queue,bg=NAVY);row.pack(fill='x',pady=(0,12))
         ttk.Button(row,text='Media credits',command=self.open_credits).pack(side='left',padx=(0,8))
         ttk.Button(row,text='Research leads',command=self.open_leads).pack(side='left',padx=(0,8))
@@ -267,6 +375,13 @@ class ProductionStudio(tk.Toplevel):
             return 'break'
         except (tk.TclError,IndexError):
             return
+
+    def model_setup(self,on_select=None):
+        def selected(name):
+            self.model.set(name)
+            self._log("Text-writing model selected: "+name)
+            if on_select:on_select(name)
+        return open_text_model_setup(self,on_select=selected)
 
     def choose_workflow(self):
         file=filedialog.askopenfilename(parent=self,
@@ -369,6 +484,13 @@ class ProductionStudio(tk.Toplevel):
         if p:self.notes.set(p)
 
     def add_job(self):
+        if self.start_immediately.get():
+            try:
+                self.model.set(engine.select_local_model(self.model.get()))
+            except engine.OllamaSetupError as exc:
+                self._log(str(exc))
+                self.model_setup(on_select=lambda name:self.add_job())
+                return
         try:
             deliverables=[key for key,flag in (
                 ('full',self.want_full),('shorts',self.want_shorts),('tiktok',self.want_tiktok))
