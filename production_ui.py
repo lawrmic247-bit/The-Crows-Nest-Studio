@@ -11,6 +11,7 @@ from pathlib import Path
 from tkinter import filedialog,messagebox,scrolledtext,ttk
 
 import production_engine as engine
+import update_engine
 
 NAVY='#202a33'; PANEL='#303d49'; GOLD='#9fc5bc'; CREAM='#e0e6e8'; MUTED='#bac7ce'
 
@@ -27,6 +28,8 @@ class ProductionStudio(tk.Toplevel):
         self.notes=tk.StringVar(value='')
         self.minutes=tk.IntVar(value=8)
         self.fmt=tk.StringVar(value='wide')
+        self.visual_style=tk.StringVar(value='archival')
+        self.inbox_dir=tk.StringVar(value=update_engine.load_settings().get('chatgpt_inbox',''))
         self.model=tk.StringVar(value='qwen3:8b')
         self.voice=tk.StringVar(value=default_voice)
         self.media=tk.BooleanVar(value=True)
@@ -58,6 +61,8 @@ class ProductionStudio(tk.Toplevel):
         queue=tk.Frame(self.tabs,bg=NAVY,padx=18,pady=17)
         self.tabs.add(create,text='1. Create episode')
         self.tabs.add(queue,text='2. Production queue')
+        inbox=tk.Frame(self.tabs,bg=NAVY,padx=18,pady=18)
+        self.tabs.add(inbox,text='3. ChatGPT inbox')
         self.queue_page=queue
         self._heading(create,'Describe the episode you want',13)
         tk.Label(create,text='Include the topic, angle, key events, and style. '
@@ -72,7 +77,12 @@ class ProductionStudio(tk.Toplevel):
         basic=tk.Frame(create,bg=NAVY);basic.pack(fill='x',pady=(0,15))
         self._field(basic,'Length (minutes)',self.minutes,values=[1,2,3,5,8,10,12,15,20,30],width=9)
         self._field(basic,'Video shape',self.fmt,values=['short','wide','both'],width=12)
+        self._field(basic,'Visual style',self.visual_style,values=['archival','motion','hybrid'],width=14)
 
+        tk.Label(create,text='Archival = authentic photos. Motion = gentle movement on licensed stills. '
+                 'Hybrid = photos and documentary title cards. No invented battle footage.',
+                 bg=NAVY,fg=MUTED,font=('Segoe UI',10),wraplength=875,
+                 justify='left').pack(anchor='w',pady=(0,13))
         self.advanced=tk.Frame(create,bg=NAVY)
         self.show_advanced=tk.BooleanVar(value=False)
         ttk.Checkbutton(create,text='Show advanced production settings',
@@ -137,7 +147,70 @@ class ProductionStudio(tk.Toplevel):
         tk.Label(footer,textvariable=self.state,anchor='w',wraplength=900,
                  justify='left',bg=PANEL,fg=CREAM,
                  font=('Segoe UI',10)).pack(fill='x')
+        self._heading(inbox,'Send topics from ChatGPT',14)
+        tk.Label(inbox,text='ChatGPT can place private episode requests in your Drive job inbox. '
+                 'Install Google Drive for desktop, then choose its locally synced folder here once. '
+                 'Studio scans that folder while it is open and imports new jobs.',
+                 bg=NAVY,fg=MUTED,font=('Segoe UI',11),wraplength=880,
+                 justify='left').pack(anchor='w',pady=(0,17))
+        row=tk.Frame(inbox,bg=NAVY);row.pack(fill='x',pady=(0,15))
+        ttk.Entry(row,textvariable=self.inbox_dir).pack(side='left',fill='x',expand=True)
+        ttk.Button(row,text='Choose folder',command=self.choose_inbox).pack(
+                side='left',padx=(9,0))
+        ttk.Button(inbox,text='Import new ChatGPT jobs now',command=self.scan_inbox).pack(
+                anchor='w',pady=(0,15))
+        tk.Label(inbox,text='A request can generate an unverified draft automatically. '
+                 'You still listen, review claims and media rights, preview the video, '
+                 'and explicitly approve publication.',
+                 bg=NAVY,fg=MUTED,font=('Segoe UI',11),wraplength=880,
+                 justify='left').pack(anchor='w',pady=(0,12))
+        ttk.Button(inbox,text='View production queue',
+                   command=lambda:self.tabs.select(self.queue_page)).pack(anchor='w')
         self.refresh()
+        self.after(30000,self._scan_inbox_timer)
+
+    def choose_inbox(self):
+        folder=filedialog.askdirectory(parent=self,title='Select locally synced Google Drive job inbox')
+        if not folder:return
+        self.inbox_dir.set(folder)
+        settings=update_engine.load_settings()
+        settings['chatgpt_inbox']=folder
+        update_engine.save_settings(settings)
+        self._log('Private inbox connected: '+folder)
+        self.scan_inbox()
+
+    def scan_inbox(self,silent=False):
+        folder=Path(self.inbox_dir.get().strip())
+        if not str(self.inbox_dir.get()).strip() or not folder.is_dir():
+            if not silent:messagebox.showwarning('Inbox folder missing',
+                'Choose your locally synced Google Drive job inbox folder first.',parent=self)
+            return
+        seen={j['id'] for j in engine.list_jobs()}
+        ids=[]
+        errors=[]
+        for file in sorted(folder.glob('*.json'))[:60]:
+            try:
+                job=engine.import_chatgpt_job(file,source_folder=folder)
+                if job['id'] not in seen:
+                    ids.append(job['id'])
+                    seen.add(job['id'])
+            except (OSError,ValueError,TypeError,KeyError) as exc:
+                errors.append(file.name+': '+str(exc))
+        if ids:
+            self._log('Imported '+str(len(ids))+' new private ChatGPT job(s).')
+            self.refresh(ids[-1])
+            self.tabs.select(self.queue_page)
+            if self.start_immediately.get() and not self.busy:
+                self._run(ids)
+        elif not silent:self._log('No new ChatGPT jobs in this folder.')
+        if errors and not silent:
+            messagebox.showwarning('Unrecognized inbox files',
+                  '\n'.join(errors[:4]),parent=self)
+
+    def _scan_inbox_timer(self):
+        if self.winfo_exists():
+            self.scan_inbox(silent=True)
+            self.after(30000,self._scan_inbox_timer)
 
     def _heading(self,parent,text,size=12):
         tk.Label(parent,text=text,bg=NAVY,fg=CREAM,
@@ -175,7 +248,8 @@ class ProductionStudio(tk.Toplevel):
     def add_job(self):
         try:
             j=engine.create_job(self.prompt.get('1.0','end'),minutes=self.minutes.get(),fmt=self.fmt.get(),
-                model=self.model.get(),voice=self.voice.get(),notes_file=self.notes.get(),auto_media=self.media.get())
+                model=self.model.get(),voice=self.voice.get(),notes_file=self.notes.get(),
+                auto_media=self.media.get(),visual_style=self.visual_style.get())
         except Exception as exc:messagebox.showerror('Invalid production request',str(exc),parent=self);return
         self.refresh(j['id']);self.tabs.select(self.queue_page);self._log('Added '+j['id']+' to the production queue.')
         if self.start_immediately:self._run([j['id']])
