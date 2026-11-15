@@ -217,42 +217,120 @@ class App(tk.Tk):
         self.publish_page=publish
         self.activity_page=activity
 
-        self._label(create,'Start with a topic, or polish a prepared script')
-        tk.Label(create,text='Create a documentary draft with Ollama, or type your narration below. '
-                 'Choose Create from one topic for three formats at once. Separate existing script scenes with blank lines.',
-                 bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=900,justify='left').pack(
-                     anchor='w',pady=(3,17))
-        prompt_bar=tk.Frame(create,bg=INK);prompt_bar.pack(fill='x',pady=(0,15))
-        ttk.Button(prompt_bar,text='Create from one topic',
-                   command=self.open_production_studio).pack(side='left',padx=(0,10))
-        ttk.Button(prompt_bar,text='Quick AI: research & draft',
-                   command=self.prompt_draft).pack(side='left')
-        self.chat_ready_button=ttk.Button(prompt_bar,text='Review ChatGPT draft',
-                   state='disabled',command=self.open_chat_ready)
-        self.chat_ready_button.pack(side='left',padx=(10,0))
-        research_actions=tk.Frame(create,bg=INK)
-        research_actions.pack(fill='x',pady=(0,11))
-        ttk.Button(research_actions,text='View discovered research sources',
-                   command=self.open_research_sources).pack(side='left',padx=(0,9))
-        ttk.Button(research_actions,text='Send script to Fact Checker',
-                   command=self.fact_check).pack(side='left')
-        self._label(create,'Episode title')
-        self.title_var=tk.StringVar(value="The History of the Crow's Nest")
-        ttk.Entry(create,textvariable=self.title_var,font=('Segoe UI',12)).pack(
-            fill='x',pady=(5,18))
-        self._label(create,'Narration script')
-        self.script=scrolledtext.ScrolledText(create,height=13,wrap='word',
-                    fg=CREAM,bg=PANEL,insertbackground=CREAM,
-                    selectbackground='#48655e',font=('Segoe UI',12),
-                    relief='flat',borderwidth=0,padx=14,pady=12,undo=True)
+        # A single film brief replaces the duplicate start buttons.
+        hero=tk.Frame(create,bg=PANEL,padx=23,pady=22)
+        hero.pack(fill='x',pady=(0,21))
+        tk.Label(hero,text='01   /   STORY DEVELOPMENT',bg=PANEL,fg=GOLD,
+                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x')
+        tk.Label(hero,text='A story worth telling.',bg=PANEL,fg=CREAM,
+                 font=('Segoe UI',22,'bold'),anchor='w').pack(fill='x',pady=(9,3))
+        tk.Label(hero,text='Give us the subject. Studio finds research leads and builds '
+                 'a documentary with short-form companion stories.',
+                 bg=PANEL,fg=MUTED,font=('Segoe UI',11),wraplength=740,
+                 justify='left',anchor='w').pack(fill='x',pady=(0,21))
+        tk.Label(hero,text='WHAT IS THE FILM ABOUT?',bg=PANEL,fg=MUTED,
+                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',pady=(0,7))
+        self.topic_var=tk.StringVar()
+        self.topic_input=tk.Entry(hero,textvariable=self.topic_var,
+                   bg=FIELD_BG,fg=CREAM,insertbackground=CREAM,relief='flat',
+                   borderwidth=0,font=('Segoe UI',15))
+        self.topic_input.pack(fill='x',ipady=12)
+        tk.Label(hero,text='Example: Donald E. Ballard, Navy corpsman and Medal of Honor recipient',
+                 bg=PANEL,fg=MUTED,font=('Segoe UI',9),
+                 anchor='w').pack(fill='x',pady=(8,17))
+        controls=tk.Frame(hero,bg=PANEL)
+        controls.pack(fill='x',pady=(0,17))
+        left=tk.Frame(controls,bg=PANEL)
+        right=tk.Frame(controls,bg=PANEL)
+        left.pack(side='left',fill='x',expand=True,padx=(0,13))
+        right.pack(side='left',fill='x',expand=True)
+        tk.Label(left,text='RUN TIME',bg=PANEL,fg=MUTED,
+                 font=('Segoe UI',9,'bold')).pack(anchor='w',pady=(0,5))
+        self.minutes_var=tk.StringVar(value='10')
+        ttk.Combobox(left,textvariable=self.minutes_var,state='readonly',
+                  values=['1','2','3','5','8','10','12','15','20','30']).pack(fill='x')
+        tk.Label(right,text='VISUAL TREATMENT',bg=PANEL,fg=MUTED,
+                 font=('Segoe UI',9,'bold')).pack(anchor='w',pady=(0,5))
+        self.visual_style_var=tk.StringVar(value='Hybrid documentary')
+        self.visual_styles={
+            'Archival photographs':'archival',
+            'Cinematic photo motion':'motion',
+            'Hybrid documentary':'hybrid',
+            'Animated realism (local AI)':'ai_reenactment',
+        }
+        ttk.Combobox(right,textvariable=self.visual_style_var,state='readonly',
+                     values=list(self.visual_styles)).pack(fill='x')
+        tk.Label(hero,text='DELIVER TO',bg=PANEL,fg=MUTED,
+                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',pady=(0,8))
+        targets=tk.Frame(hero,bg=PANEL)
+        targets.pack(fill='x',pady=(0,18))
+        self.want_full=tk.BooleanVar(value=True)
+        self.want_shorts=tk.BooleanVar(value=True)
+        self.want_tiktok=tk.BooleanVar(value=True)
+        for label,var in (
+            ('Full documentary (16:9)',self.want_full),
+            ('YouTube Short (9:16)',self.want_shorts),
+            ('TikTok edit (9:16)',self.want_tiktok),
+        ):
+            tk.Checkbutton(targets,text=label,variable=var,
+                 bg=PANEL,fg=CREAM,selectcolor=FIELD_BG,
+                 activebackground=PANEL,activeforeground=CREAM,
+                 font=('Segoe UI',10)).pack(anchor='w',pady=2)
+        actions=tk.Frame(hero,bg=PANEL)
+        actions.pack(fill='x')
+        self.build_button=ttk.Button(actions,text='RESEARCH & BUILD STORY',
+                            style='Studio.Primary.TButton',
+                            command=self.start_production)
+        self.build_button.pack(side='left',padx=(0,12))
+        ttk.Button(actions,text='Browse projects',
+                   command=self.open_production_studio).pack(side='left')
+        self.pipeline_status=tk.StringVar(
+            value='READY  •  Research and drafting run locally. Facts require approval.')
+        tk.Label(hero,textvariable=self.pipeline_status,bg=PANEL,fg=MUTED,
+                 font=('Segoe UI',10),anchor='w',wraplength=700,
+                 justify='left').pack(fill='x',pady=(17,0))
+        tk.Label(create,text='SCRIPT & SOURCE DESK',bg=INK,fg=GOLD,
+                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',pady=(1,6))
+        tk.Label(create,text='Inspect the draft before narration',
+                 bg=INK,fg=CREAM,font=('Segoe UI',18,'bold'),
+                 anchor='w').pack(fill='x',pady=(0,10))
+        script_actions=tk.Frame(create,bg=INK)
+        script_actions.pack(fill='x',pady=(0,13))
+        ttk.Button(script_actions,text='Sources',command=self.open_research_sources).pack(
+                   side='left',padx=(0,8))
+        ttk.Button(script_actions,text='Fact checker',command=self.fact_check).pack(
+                   side='left',padx=(0,8))
+        ttk.Button(script_actions,text='Save script',command=self.save_script).pack(side='left')
+        self.chat_ready_button=ttk.Button(create,text='OPEN IMPORTED CHATGPT DRAFT',
+                     state='disabled',command=self.open_chat_ready)
+        self.chat_ready_button.pack(anchor='w',pady=(0,12))
+        self.active_variant=tk.StringVar(value='Full documentary')
+        tk.Label(create,text='EDIT WHICH VERSION?',bg=INK,fg=MUTED,
+                 font=('Segoe UI',9,'bold')).pack(anchor='w',pady=(4,5))
+        self.variant_combo=ttk.Combobox(create,textvariable=self.active_variant,
+                         state='readonly',values=['Full documentary','YouTube Short','TikTok'],
+                         width=28)
+        self.variant_combo.pack(anchor='w',pady=(0,14))
+        self.variant_combo.bind('<<ComboboxSelected>>',self.load_selected_variant)
+        self._label(create,'Working title')
+        self.title_var=tk.StringVar(value='Untitled documentary')
+        ttk.Entry(create,textvariable=self.title_var,
+                  font=('Segoe UI',12)).pack(fill='x',pady=(5,16))
+        self._label(create,'Narration / transcript')
+        self.script=scrolledtext.ScrolledText(create,height=15,wrap='word',
+                    fg=CREAM,bg=FIELD_BG,insertbackground=CREAM,
+                    selectbackground=TAB_BG,font=('Segoe UI',12),
+                    relief='flat',borderwidth=0,padx=15,pady=14,undo=True)
         self.script.pack(fill='both',expand=True,pady=(6,12))
-        self.script.insert('1.0',
-            "Long before radar, a lookout could be the first to recognize trouble on the horizon.\n\n"
-            "From the upper deck, sailors scanned for ships, land, weather, and danger. Their duty was vigilance.\n\n"
-            "This is The Crow's Nest. Military history, traditions, news, and the people behind the stories.")
-        self.script.bind('<KeyRelease>',lambda event:setattr(self,'last_preview',None))
-        tk.Label(create,text='Next: open Narrate to select a voice and generate playback.',
-                 bg=INK,fg=GOLD,font=('Segoe UI',10)).pack(anchor='w')
+        self.script.bind('<KeyRelease>',lambda event:self._script_edited())
+        self._loaded_script_snapshot=''
+        bottom=tk.Frame(create,bg=INK)
+        bottom.pack(fill='x',pady=(5,8))
+        ttk.Button(bottom,text='CONTINUE TO NARRATION',
+                   style='Studio.Primary.TButton',
+                   command=lambda:self._go(1)).pack(side='left',padx=(0,12))
+        ttk.Button(bottom,text='Review facts first',
+                   command=self.fact_check).pack(side='left')
 
         self._label(voice,'Choose how the story sounds')
         tk.Label(voice,text='Listen to a short sample before generating the full narration. '
