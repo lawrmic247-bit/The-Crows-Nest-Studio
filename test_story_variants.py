@@ -7,9 +7,9 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
-import local_video
+import studio as local_video
 import production_engine as engine
-from story_variants import distill_story,available_outputs
+from production_engine import distill_story,available_outputs
 
 
 class ShortFormTests(unittest.TestCase):
@@ -65,7 +65,7 @@ class ShortFormTests(unittest.TestCase):
                 self.assertTrue(data["scenes"])
 
     def test_punchy_local_rewrite_and_no_invented_year(self):
-        from story_variants import social_story
+        from production_engine import social_story
         original=self.scenes*5
         words=("The corpsman heard the grenade warning and immediately moved to protect "
                "wounded Marines under enemy fire. ")
@@ -107,8 +107,8 @@ class ShortFormTests(unittest.TestCase):
 
     def test_verified_updater_supports_local_video_modules(self):
         import update_engine
-        self.assertTrue(update_engine.is_allowed("story_variants.py"))
-        self.assertTrue(update_engine.is_allowed("local_video.py"))
+        self.assertTrue(update_engine.is_allowed("production_engine.py"))
+        self.assertTrue(update_engine.is_allowed("studio.py"))
         self.assertFalse(update_engine.is_allowed("private_voice_recording.wav"))
 
     def test_default_both_compat(self):
