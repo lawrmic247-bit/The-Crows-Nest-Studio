@@ -1,3 +1,17 @@
+# CROW'S NEST STUDIO 4.4 — RESEARCH FIRST, THEN FACT CHECK
+
+**Quick AI no longer asks you to provide a TXT research file.**
+
+1. In **1 · STORY**, select **Quick AI: research & draft**. Enter your subject and the full-length duration.
+2. Studio searches Wikipedia's public REST search/overview API and the Library of Congress's public catalog API for relevant records. It saves the source URLs, retrieved descriptions and warnings locally. **Your topic is transmitted to these public search services**; other scripts and voice files remain local.
+3. Ollama drafts a full documentary and two punchy variants (YouTube Short and TikTok). It uses retrieved context where available and labels the result **unverified**. If research services are inaccessible, the unverified draft route is available; Studio never fabricates a source link to appear researched.
+4. Review the written script and select **View discovered research sources**, or choose **Review factual claims and sources** under **3 · VERIFY & RENDER**. The Fact Checker has a **Discovered sources** button listing real URLs and source excerpts.
+5. Open the original research pages, compare each claim with the evidence and record an accurate supporting excerpt. **Discovered source leads are not fact-check clearance.** Complete the claim-by-claim check and explicitly confirm footage rights.
+6. Only after that review and your explicit Render command does Studio invoke the optional local ComfyUI/Wan engine for illustrative reenactment footage. AI-generated scenes are watermarked **AI REENACTMENT**, and you must inspect the finished video before entering Buffer's upload composer.
+
+You never need to create a research file yourself. A local Ollama model is still required for the automatically drafted narration. Studio cannot guarantee sufficient trustworthy evidence for obscure topics; if the evidence is insufficient, revise or defer the story rather than inventing details. Automated source discovery is **not** autonomous historical fact verification.
+
+---
 # CROW'S NEST STUDIO 4.3 — ONE TOPIC / THREE VIDEOS
 
 ## The simple workflow
@@ -29,7 +43,7 @@ One-time setup:
 2. In ComfyUI, load a text-to-video or image-to-video workflow; set the **positive prompt** node's text to include `__CROWS_PROMPT__` exactly once. Export **API Format JSON** (not the ordinary UI workflow).
 3. Start ComfyUI's local server on `http://127.0.0.1:8188`. Do not expose its service to the internet.
 4. In **Create from one topic → 3. INTEGRATIONS**, choose your API-format workflow and click **Check local AI engine**.
-5. Select **Animated realism (local AI)** before starting a topic. Studio can queue up to three local illustrative clips while researching. Missing dependencies or failed scenes use archival/title-card fallbacks with clear messages.
+5. Select **Animated realism (local AI)** before starting a topic. Studio queues a few illustrative clips only when rendering AFTER source review. Missing dependencies or failed scenes use archival/title-card fallbacks with clear messages.
 
 Generation is **not unlimited in duration per clip**; model checkpoints have GPU memory and duration limits. The app uses only a few short AI scenes per documentary, rather than promising a 10-minute fully AI-generated film.
 
