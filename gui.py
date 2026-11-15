@@ -540,6 +540,8 @@ class App(tk.Tk):
         self.publish_reviewed.set(False)
         self.last_preview=None
         self.last_render=None
+        self.rendered_label.set('No finished video selected. Render a documentary or choose an MP4.')
+        self.chat_ready_button.configure(state='disabled')
         self.pipeline_status.set('READY  •  Describe your new documentary above.')
         self._go(0)
         self.topic_input.focus_set()
@@ -794,6 +796,7 @@ class App(tk.Tk):
                         parent=self):
                     return
                 self._manifest()
+                self._loaded_script_snapshot=current
             self.load_production_draft(Path(path),job['id'])
         except (OSError,ValueError,KeyError) as exc:
             messagebox.showwarning('Cannot switch format',str(exc),parent=self)
@@ -990,7 +993,20 @@ class App(tk.Tk):
         threading.Thread(target=worker,daemon=True).start()
 
     def load_production_draft(self, path:Path, job_id:str):
-        data=json.loads(Path(path).read_text(encoding='utf-8'))
+        path=Path(path)
+        if (self.loaded_manifest_path and
+                path.resolve()!=self.loaded_manifest_path.resolve() and
+                self.script.get('1.0','end').strip()!=self._loaded_script_snapshot):
+            answer=messagebox.askyesnocancel(
+                'Switch documentary version',
+                'You have unsaved changes. Save the current version before loading another?',
+                parent=self)
+            if answer is None:
+                return
+            if answer:
+                self._manifest()
+                self._loaded_script_snapshot=self.script.get('1.0','end').strip()
+        data=json.loads(path.read_text(encoding='utf-8'))
         if not isinstance(data.get('scenes'),list) or not data['scenes']:
             raise ValueError('Production job does not have a valid storyboard.')
         self.loaded_manifest_path=Path(path)
