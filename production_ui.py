@@ -33,7 +33,7 @@ class ProductionStudio(tk.Toplevel):
         super().__init__(parent)
         self.title("The Crow's Nest | Episode Queue")
         self.geometry('1010x775')
-        self.minsize(770,600)
+        self.minsize(710,500)
         self.configure(bg=NAVY)
         self.on_load=on_load
         self.busy=False
@@ -74,13 +74,30 @@ class ProductionStudio(tk.Toplevel):
         self.tabs=ttk.Notebook(self,style='Queue.TNotebook')
         self.tabs.pack(fill='both',expand=True,padx=18,pady=(0,10))
 
-        create=tk.Frame(self.tabs,bg=NAVY,padx=18,pady=17)
-        queue=tk.Frame(self.tabs,bg=NAVY,padx=18,pady=17)
-        self.tabs.add(create,text='1. Create episode')
-        self.tabs.add(queue,text='2. Production queue')
-        inbox=tk.Frame(self.tabs,bg=NAVY,padx=18,pady=18)
-        self.tabs.add(inbox,text='3. INTEGRATIONS')
-        self.queue_page=queue
+        self._page_scroll_canvases=[]
+        self._page_scroll_containers=[]
+        def page(title):
+            outer=tk.Frame(self.tabs,bg=NAVY)
+            self.tabs.add(outer,text=title)
+            canvas=tk.Canvas(outer,bg=NAVY,highlightthickness=0,borderwidth=0)
+            bar=ttk.Scrollbar(outer,orient='vertical',command=canvas.yview)
+            canvas.configure(yscrollcommand=bar.set)
+            bar.pack(side='right',fill='y')
+            canvas.pack(side='left',fill='both',expand=True)
+            content=tk.Frame(canvas,bg=NAVY,padx=18,pady=17)
+            win=canvas.create_window((0,0),window=content,anchor='nw')
+            content.bind('<Configure>',lambda event,c=canvas:
+                         c.configure(scrollregion=c.bbox('all')))
+            canvas.bind('<Configure>',lambda event,c=canvas,w=win:
+                        c.itemconfigure(w,width=event.width))
+            content._scroll_outer=outer
+            self._page_scroll_canvases.append(canvas)
+            self._page_scroll_containers.append(outer)
+            return content
+        create=page('1. Create episode')
+        queue=page('2. Production queue')
+        inbox=page('3. INTEGRATIONS')
+        self.queue_page=queue._scroll_outer
         self._heading(create,'One topic. A full video and punchy short versions.',15)
         tk.Label(create,text='Include the topic, angle, key events, and style. '
                  'The generated script will still require source review.',
@@ -220,6 +237,36 @@ class ProductionStudio(tk.Toplevel):
             anchor='w',pady=(0,10))
         self.refresh()
         self.after(30000,self._scan_inbox_timer)
+
+    def _page_mouse_wheel(self,event):
+        try:
+            if event.widget.winfo_toplevel() is not self:
+                return
+            idx=self.tabs.index(self.tabs.select())
+            canvas=self._page_scroll_canvases[idx]
+            outer=self._page_scroll_containers[idx]
+            widget=event.widget
+            while widget is not None and widget is not self:
+                if isinstance(widget,(tk.Text,tk.Listbox,ttk.Treeview,ttk.Combobox)):
+                    return
+                if widget is outer:
+                    break
+                widget=widget.master
+            if widget is not outer:
+                return
+            if event.num==4:
+                units=-2
+            elif event.num==5:
+                units=2
+            elif getattr(event,'delta',0):
+                delta=event.delta
+                units=-int(delta/120) if abs(delta)>=120 else (-1 if delta>0 else 1)
+            else:
+                return
+            canvas.yview_scroll(units,'units')
+            return 'break'
+        except (tk.TclError,IndexError):
+            return
 
     def choose_workflow(self):
         file=filedialog.askopenfilename(parent=self,
