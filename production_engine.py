@@ -716,12 +716,17 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
         if not prepared_file and not job.get('notes_file') and script_generator is generate_scenes:
             emit('researching','Finding source leads from Wikipedia and the Library of Congress...',0)
             research_report=discover_research(job['prompt'])
-            brief=research_brief(research_report)
-            research_file=QUEUE/(job_id+'_automatic_research.txt')
-            research_file.parent.mkdir(parents=True,exist_ok=True)
-            research_file.write_text(brief,encoding='utf-8')
-            job=change(job_id,notes_file=str(research_file),
-                       research_source_count=len(research_report['sources']))
+            source_count=len(research_report['sources'])
+            if source_count:
+                brief=research_brief(research_report)
+                research_file=QUEUE/(job_id+'_automatic_research.txt')
+                research_file.parent.mkdir(parents=True,exist_ok=True)
+                research_file.write_text(brief,encoding='utf-8')
+                job=change(job_id,notes_file=str(research_file),
+                           research_source_count=source_count)
+            else:
+                job=change(job_id,research_source_count=0,
+                           progress='No sources retrieved. Draft will be clearly unverified.')
             if progress:
                 progress(f"Research leads: {len(research_report['sources'])} retrieved. "
                          "Nothing is automatically verified.")
