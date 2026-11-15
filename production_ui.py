@@ -226,15 +226,15 @@ class ProductionStudio(tk.Toplevel):
               title='Choose ComfyUI workflow in API JSON format',
               filetypes=[('API workflow JSON','*.json')])
         if not file:return
+        from local_video import load_workflow,LocalVideoError
         try:
-            from local_video import load_workflow
             load_workflow(Path(file))
             self.workflow_path.set(file)
             settings=update_engine.load_settings()
             settings['comfyui_workflow']=file
             update_engine.save_settings(settings)
             self._log('AI video workflow saved. Generated scenes remain illustrative.')
-        except (ValueError,OSError) as exc:
+        except (ValueError,OSError,LocalVideoError) as exc:
             messagebox.showerror('Unsupported workflow',str(exc),parent=self)
 
     def check_local_video(self):
