@@ -118,12 +118,17 @@ class App(tk.Tk):
                   foreground=[('selected','#ffffff')])
 
         self._section_names=[
-            ('01 / STORY DEVELOPMENT','New production'),
-            ('02 / NARRATION','Voice studio'),
-            ('03 / VERIFICATION','Review and render'),
-            ('04 / FINAL SCREENING','Preview and publish'),
-            ('05 / WORKSPACE','System and preferences'),
+            ('STEP 1 / 5','Brief your documentary'),
+            ('STEP 2 / 5','Research & verify the script'),
+            ('STEP 3 / 5','Record the narration'),
+            ('STEP 4 / 5','Visuals & final render'),
+            ('STEP 5 / 5','Screen & publish'),
+            ('WORKSPACE','Settings & integrations'),
         ]
+        self.unlocked_step=0
+        self.fact_review_complete=False
+        self.voice_approved=tk.BooleanVar(value=False)
+        self.fact_window=None
         shell=tk.Frame(self,bg=INK)
         shell.pack(fill='both',expand=True)
 
@@ -150,11 +155,12 @@ class App(tk.Tk):
                  font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',padx=24,pady=(0,9))
         self.nav_buttons=[]
         for index,label in enumerate((
-            '01    NEW PRODUCTION',
-            '02    NARRATION',
-            '03    FACTS & RENDER',
-            '04    SCREENING ROOM',
-            '05    SETTINGS',
+            '01    FILM BRIEF',
+            '02    RESEARCH & SCRIPT',
+            '03    NARRATION',
+            '04    VIDEO PRODUCTION',
+            '05    FINAL SCREENING',
+            '      SETTINGS',
         )):
             button=tk.Button(sidebar,text=label,anchor='w',
                       relief='flat',borderwidth=0,highlightthickness=0,
@@ -222,12 +228,15 @@ class App(tk.Tk):
             self._page_scroll_containers.append(outer)
             return inner
 
-        create=page('1 · STORY')
-        voice=page('2 · VOICE')
-        export=page('3 · VERIFY & RENDER')
-        publish=page('4 · WATCH & PUBLISH')
-        activity=page('5 · SETTINGS')
-        self.write_page=create
+        create=page('1 · BRIEF')
+        review_page=page('2 · SCRIPT')
+        voice=page('3 · VOICE')
+        export=page('4 · EDIT')
+        publish=page('5 · SCREEN')
+        activity=page('TOOLS')
+        self.write_page=review_page
+        self.brief_page=create
+        self.review_page=review_page
         self.voice_page=voice
         self.export_page=export
         self.publish_page=publish
@@ -305,50 +314,50 @@ class App(tk.Tk):
         tk.Label(hero,textvariable=self.pipeline_status,bg=PANEL,fg=MUTED,
                  font=('Segoe UI',10),anchor='w',wraplength=700,
                  justify='left').pack(fill='x',pady=(17,0))
-        tk.Label(create,text='SCRIPT & SOURCE DESK',bg=INK,fg=GOLD,
+        self._stage_heading(review_page,'STEP 2 / SCRIPT & EVIDENCE',
+             'Verify the story before recording',
+             'Inspect the sources, edit your script, and clear the factual claims. You cannot record until review is complete.')
+        tk.Label(review_page,text='SCRIPT & SOURCE DESK',bg=INK,fg=GOLD,
                  font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',pady=(1,6))
-        tk.Label(create,text='Inspect the draft before narration',
+        tk.Label(review_page,text='Inspect the draft before narration',
                  bg=INK,fg=CREAM,font=('Segoe UI',18,'bold'),
                  anchor='w').pack(fill='x',pady=(0,10))
-        script_actions=tk.Frame(create,bg=INK)
+        script_actions=tk.Frame(review_page,bg=INK)
         script_actions.pack(fill='x',pady=(0,13))
         ttk.Button(script_actions,text='Sources',command=self.open_research_sources).pack(
                    side='left',padx=(0,8))
         ttk.Button(script_actions,text='Fact checker',command=self.fact_check).pack(
                    side='left',padx=(0,8))
         ttk.Button(script_actions,text='Save script',command=self.save_script).pack(side='left')
-        self.chat_ready_button=ttk.Button(create,text='OPEN IMPORTED CHATGPT DRAFT',
+        self.chat_ready_button=ttk.Button(review_page,text='OPEN IMPORTED CHATGPT DRAFT',
                      state='disabled',command=self.open_chat_ready)
         self.chat_ready_button.pack(anchor='w',pady=(0,12))
         self.active_variant=tk.StringVar(value='Full documentary')
-        tk.Label(create,text='EDIT WHICH VERSION?',bg=INK,fg=MUTED,
+        tk.Label(review_page,text='EDIT WHICH VERSION?',bg=INK,fg=MUTED,
                  font=('Segoe UI',9,'bold')).pack(anchor='w',pady=(4,5))
-        self.variant_combo=ttk.Combobox(create,textvariable=self.active_variant,
+        self.variant_combo=ttk.Combobox(review_page,textvariable=self.active_variant,
                          state='readonly',values=['Full documentary','YouTube Short','TikTok'],
                          width=28)
         self.variant_combo.pack(anchor='w',pady=(0,14))
         self.variant_combo.bind('<<ComboboxSelected>>',self.load_selected_variant)
-        self._label(create,'Working title')
+        self._label(review_page,'Working title')
         self.title_var=tk.StringVar(value='Untitled documentary')
-        ttk.Entry(create,textvariable=self.title_var,
+        ttk.Entry(review_page,textvariable=self.title_var,
                   font=('Segoe UI',12)).pack(fill='x',pady=(5,16))
-        self._label(create,'Narration / transcript')
-        self.script=scrolledtext.ScrolledText(create,height=15,wrap='word',
+        self._label(review_page,'Narration / transcript')
+        self.script=scrolledtext.ScrolledText(review_page,height=15,wrap='word',
                     fg=CREAM,bg=FIELD_BG,insertbackground=CREAM,
                     selectbackground=TAB_BG,font=('Segoe UI',12),
                     relief='flat',borderwidth=0,padx=15,pady=14,undo=True)
         self.script.pack(fill='both',expand=True,pady=(6,12))
         self.script.bind('<KeyRelease>',lambda event:self._script_edited())
         self._loaded_script_snapshot=''
-        bottom=tk.Frame(create,bg=INK)
+        bottom=tk.Frame(review_page,bg=INK)
         bottom.pack(fill='x',pady=(5,8))
-        ttk.Button(bottom,text='CONTINUE TO NARRATION',
-                   style='Studio.Primary.TButton',
-                   command=lambda:self._go(1)).pack(side='left',padx=(0,12))
-        ttk.Button(bottom,text='Review facts first',
-                   command=self.fact_check).pack(side='left')
+        tk.Label(bottom,text='Source-led review is required before narration.',bg=INK,fg=MUTED,
+                 font=('Segoe UI',10)).pack(side='left')
 
-        self._stage_heading(voice,'02 / NARRATION',
+        self._stage_heading(voice,'STEP 3 / NARRATION',
              'The voice behind the story',
              'Choose a documentary narrator, preview the sound, then create the final voice track.')
         self.refresh_voices()
@@ -397,7 +406,7 @@ class App(tk.Tk):
                    style='Studio.Primary.TButton',
                    command=lambda:self._go(2)).pack(anchor='w',pady=(25,15))
 
-        self._stage_heading(export,'03 / EDITORIAL CLEARANCE',
+        self._stage_heading(export,'STEP 4 / VISUALS & EDIT',
              'Verify before the camera rolls',
              'The manuscript and footage must pass review. AI drafts are never automatically verified.')
         self._label(export,'Render aspect ratio')
@@ -440,7 +449,7 @@ class App(tk.Tk):
         ttk.Button(row,text='Open exports folder',
                    command=self.open_exports).pack(side='left')
 
-        self._stage_heading(publish,'04 / FINAL SCREENING',
+        self._stage_heading(publish,'STEP 5 / FINAL SCREENING',
              'See the finished film',
              'Watch the complete MP4 with sound. You decide if and when to publish through Buffer.')
         self.rendered_label=tk.StringVar(value='No finished video selected. Render a documentary or choose an MP4.')
@@ -467,7 +476,7 @@ class App(tk.Tk):
                  bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=900,
                  justify='left').pack(anchor='w',pady=(18,0))
 
-        self._stage_heading(activity,'05 / WORKSPACE & SETTINGS',
+        self._stage_heading(activity,'TOOLS / WORKSPACE & SETTINGS',
              'Tools behind the camera',
              'Manage the local models, display comfort, updates, exports and technical activity.')
         row=tk.Frame(activity,bg=INK);row.pack(fill='x',pady=(0,15))
