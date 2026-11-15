@@ -105,6 +105,15 @@ class ProductionLifecycleTests(unittest.TestCase):
         self.assertEqual(len(engine.list_stage_jobs('archive')),2)
         self.assertFalse(any(j.get('removed') for j in engine.list_jobs()))
 
+    def test_explicitly_selected_writing_model_never_falls_back(self):
+        job=self.make()
+        engine.change(job['id'],model='qwen3:4b',model_locked=True)
+        with self.assertRaisesRegex(engine.OllamaSetupError,'no longer installed'):
+            engine.prepare_job_model(job['id'],installed=['other:small'])
+        self.assertEqual(engine.get_job(job['id'])['model'],'qwen3:4b')
+        self.assertEqual(engine.prepare_job_model(
+            job['id'],installed=['qwen3:4b']),'qwen3:4b')
+
     def test_stage_name_rejects_unknown_filter(self):
         with self.assertRaisesRegex(ValueError,'Unknown'):
             engine.list_stage_jobs('not-a-valid-stage')
