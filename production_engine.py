@@ -275,7 +275,27 @@ def commons_candidates(query:str,limit:int=8, *,fetch=None)->list[dict]:
 
 def download_commons_images(job:dict, scenes:list[dict], *,fetch=None)->tuple[list[dict],Path]:
     dest=MEDIA_DIR/job['id'];dest.mkdir(parents=True,exist_ok=True)
-    candidates=commons_candidates(job['prompt'][:85],limit=min(10,len(scenes)),fetch=fetch)
+    # Search concise subject/title terms instead of sending a full instruction prompt.
+    subject=re.split(r'\s+[—–:-]\s+',job.get('title',job['prompt']))[0][:90].strip()
+    queries=[subject]
+    if subject and len(subject)>8:
+        queries.append(subject+' military history')
+    for scene in scenes[:3]:
+        heading=str(scene.get('heading','')).strip()[:80]
+        if heading and heading.lower()!=subject.lower():queries.append(heading)
+    candidates=[];used_urls=set()
+    for query in dict.fromkeys(queries):
+        if len(candidates)>=min(12,len(scenes)):break
+        try:
+            found=commons_candidates(query,limit=min(7,len(scenes)),fetch=fetch)
+        except (urllib.error.URLError,TimeoutError,OSError,ValueError):
+            continue
+        for item in found:
+            if item['url'] not in used_urls:
+                item['search_query']=query
+                item['visual_type']='archival still (license and relevance unverified)'
+                candidates.append(item);used_urls.add(item['url'])
+                if len(candidates)>=min(12,len(scenes)):break
     credits=[]
     if fetch is None:fetch=urllib.request.urlopen
     for i,source in enumerate(candidates):
@@ -293,9 +313,10 @@ def download_commons_images(job:dict, scenes:list[dict], *,fetch=None)->tuple[li
             im=Image.open(BytesIO(image)).convert('RGB')
             im.thumbnail((1600,1600))
             im.save(path,format='JPEG',quality=87)
-            scene_index=round(i*len(scenes)/max(1,len(candidates)))
+            scene_index=min(len(scenes)-1,round(i*len(scenes)/max(1,len(candidates))))
             if scene_index<len(scenes):
                 scenes[scene_index]['visual']=str(path)
+                scenes[scene_index]['visual_provenance']='Candidate archival still; review media_credits.json'
                 source['scene']=scene_index+1;source['local_path']=str(path)
                 credits.append(source)
         except (OSError,ValueError,urllib.error.URLError):continue
