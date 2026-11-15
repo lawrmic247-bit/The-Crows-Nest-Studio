@@ -579,6 +579,15 @@ class ProductionStudio(tk.Toplevel):
             self.primary_btn.configure(state='disabled')
             return
         status=job.get('status')
+        if job.get('manifest'):
+            variants=job.get('variants',{})
+            choices=[label for label,kind in (
+                ('Full documentary','full'),('YouTube Short','shorts'),('TikTok','tiktok'))
+                if kind in variants]
+            if not choices and not variants:
+                choices=['Full documentary']
+            if choices and self.output_choice.get() not in choices:
+                self.output_choice.set(choices[0])
         if self.busy or status in engine.RUNNING_JOB_STATES:
             self.primary_btn.configure(text='IN PROGRESS',state='disabled')
             self.help_line.set(job.get('progress','Working on this production.'))
