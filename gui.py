@@ -126,6 +126,8 @@ class App(tk.Tk):
             ('WORKSPACE','Settings & integrations'),
         ]
         self.unlocked_step=0
+        self.available_models=[]
+        self.models_checked=False
         self.fact_review_complete=False
         self.voice_approved=tk.BooleanVar(value=False)
         self.fact_window=None
@@ -280,6 +282,30 @@ class App(tk.Tk):
         tk.Label(hero,text='Example: Donald E. Ballard, Navy corpsman and Medal of Honor recipient',
                  bg=PANEL,fg=MUTED,font=('Segoe UI',9),
                  anchor='w').pack(fill='x',pady=(8,17))
+        model_card=tk.Frame(hero,bg=SURFACE_2,padx=14,pady=13)
+        model_card.pack(fill='x',pady=(0,17))
+        tk.Label(model_card,text='REQUIRED FIRST  ·  SCRIPT-WRITING MODEL',
+                 bg=SURFACE_2,fg=GOLD,font=('Segoe UI',9,'bold'),
+                 anchor='w').pack(fill='x',pady=(0,5))
+        tk.Label(model_card,text='Select an installed local Ollama model BEFORE researching.',
+                 bg=SURFACE_2,fg=CREAM,font=('Segoe UI',10),
+                 anchor='w').pack(fill='x',pady=(0,8))
+        pick_row=tk.Frame(model_card,bg=SURFACE_2)
+        pick_row.pack(fill='x')
+        self.selected_model=tk.StringVar(value='')
+        self.model_combo=ttk.Combobox(pick_row,textvariable=self.selected_model,
+                           state='readonly',values=(),width=26)
+        self.model_combo.pack(side='left',fill='x',expand=True,padx=(0,9))
+        ttk.Button(pick_row,text='Check models',
+                   command=self.refresh_models).pack(side='left',padx=(0,7))
+        ttk.Button(pick_row,text='Install / setup',
+                   command=self._setup_first_model).pack(side='left')
+        self.model_status=tk.StringVar(value='Checking local Ollama models…')
+        tk.Label(model_card,textvariable=self.model_status,
+                 bg=SURFACE_2,fg=MUTED,font=('Segoe UI',9),
+                 anchor='w',justify='left',wraplength=660).pack(fill='x',pady=(8,0))
+        self.model_combo.bind('<<ComboboxSelected>>',self._save_selected_model)
+
         controls=tk.Frame(hero,bg=PANEL)
         controls.pack(fill='x',pady=(0,17))
         left=tk.Frame(controls,bg=PANEL)
@@ -538,6 +564,7 @@ class App(tk.Tk):
         self.after(150,self.poll)
         self.after(10000,self.poll_chat_inbox)
         self.after(600,self._refresh_library_summary)
+        self.after(850,self.refresh_models)
         self.protocol('WM_DELETE_WINDOW',self.close)
 
     def new_film(self):
@@ -563,6 +590,7 @@ class App(tk.Tk):
         self.voice_approved.set(False)
         self.topic_var.set('')
         self.title_var.set('Untitled documentary')
+        self.model_status.set('Choose your local model before beginning the next documentary.')
         self.script.delete('1.0','end')
         self._loaded_script_snapshot=''
         self.active_variant.set('Full documentary')
@@ -854,6 +882,36 @@ class App(tk.Tk):
         self.short.set(not wide)
         self.publish_reviewed.set(False)
 
+    def _save_selected_model(self,event=None):
+        model=self.selected_model.get().strip()
+        if model and model in self.available_models:
+            settings=update_engine.load_settings()
+            settings['ollama_model']=model
+            update_engine.save_settings(settings)
+            self.model_status.set('READY — '+model+' selected and available locally.')
+        else:
+            self.model_status.set('Select one of the models found on this computer.')
+
+    def refresh_models(self):
+        if self.busy:
+            return
+        self.models_checked=False
+        self.model_status.set('Checking Ollama on this computer…')
+        def worker():
+            try:
+                models=production_engine.list_local_models()
+                self.pipe.put(('models_found',models))
+            except production_engine.OllamaSetupError as exc:
+                self.pipe.put(('models_error',str(exc)))
+        threading.Thread(target=worker,daemon=True).start()
+
+    def _setup_first_model(self):
+        def ready(model):
+            self.refresh_models()
+            self.selected_model.set(model)
+            self.model_status.set('Model '+model+' chosen. Verifying installed models…')
+        self.text_model_setup(on_select=ready)
+
     def start_production(self):
         topic=self.topic_var.get().strip()
         if len(topic)<8:
@@ -874,15 +932,26 @@ class App(tk.Tk):
         except (KeyError,ValueError) as exc:
             messagebox.showerror('Invalid production settings',str(exc),parent=self)
             return
-        try:
-            preferred=update_engine.load_settings().get(
-                'ollama_model',production_engine.RECOMMENDED_TEXT_MODEL)
-            model=production_engine.select_local_model(preferred)
-        except production_engine.OllamaSetupError:
-            self.pipeline_status.set('SETUP NEEDED  •  Choose or install a local script-writing model.')
-            self.text_model_setup(on_select=lambda model:
-                  self._queue_production(topic,minutes,style,outputs,model))
+        model=self.selected_model.get().strip()
+        if not model or model not in self.available_models:
+            self._block_step('STEP 1 — Choose an installed model above before research can begin.')
             return
+        # Never switch to another model silently. An explicit choice must match
+        # the current local Ollama inventory before ANY production is queued.
+        try:
+            current=production_engine.list_local_models()
+        except production_engine.OllamaSetupError as exc:
+            self._block_step('MODEL UNAVAILABLE — '+str(exc)[:160])
+            self.model_status.set('Ollama unavailable. Click Check models or Install / setup.')
+            return
+        if model not in current:
+            self.available_models=current
+            self.model_combo.configure(values=current)
+            self.selected_model.set('')
+            self.model_status.set('That model is no longer installed. Select one from the updated list.')
+            self._block_step('MODEL CHANGED — Select an installed Ollama model before starting.')
+            return
+        self._save_selected_model()
         self._queue_production(topic,minutes,style,outputs,model)
 
     def _queue_production(self,topic,minutes,visual_style,deliverables,model):
@@ -1513,7 +1582,27 @@ class App(tk.Tk):
                 msg=self.pipe.get_nowait()
                 if isinstance(msg,tuple):
                     kind,value=msg
-                    if kind=='progress':
+                    if kind=='models_found':
+                        self.available_models=list(value)
+                        self.models_checked=True
+                        self.model_combo.configure(values=self.available_models)
+                        preferred=update_engine.load_settings().get('ollama_model','')
+                        # Do not auto-pick a model: user chooses explicitly.
+                        if preferred in self.available_models:
+                            self.selected_model.set(preferred)
+                            self.model_status.set('Installed and selected: '+preferred)
+                        else:
+                            self.selected_model.set('')
+                            self.model_status.set(
+                                str(len(value))+' model(s) installed. Choose one above.'
+                                if value else 'No model installed. Click Install / setup first.')
+                    elif kind=='models_error':
+                        self.available_models=[]
+                        self.models_checked=False
+                        self.selected_model.set('')
+                        self.model_combo.configure(values=())
+                        self.model_status.set(str(value)[:170])
+                    elif kind=='progress':
                         self.pipeline_status.set(str(value)[:180])
                         self._set_log(str(value)+'\n')
                     elif kind=='quick_draft_ready':
