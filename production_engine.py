@@ -32,7 +32,7 @@ LOCK = threading.RLock()
 FORMATS = ('short','wide','both')
 VISUAL_STYLES = ('archival','motion','hybrid','ai_reenactment')
 JOB_SCHEMA = 'crowsnest.job.v1'
-STATUSES = ('queued','drafting','gathering_media','awaiting_review','ready','rendering','finished','needs_model','failed')
+STATUSES = ('queued','researching','drafting','gathering_media','awaiting_review','ready','rendering','finished','needs_model','failed')
 MAX_NOTES = 20000
 USER_AGENT = 'CrowsNestStudio/4.0 (+local documentary editor; contact via Wikimedia Commons)'
 
@@ -726,23 +726,8 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
                 credit_path=str(source_path)
             except (urllib.error.URLError,TimeoutError,OSError,ValueError,RuntimeError) as exc:
                 if progress:progress('Image lookup unavailable. Using title cards: '+str(exc)[:250])
-        if job.get('visual_style')=='ai_reenactment':
-            emit('gathering_media','Preparing optional local illustrative AI reenactments...')
-            _local_reenactments(job,scenes,progress=progress)
-            generated=[{'title':scene.get('heading',''),
-                        'local_path':scene['visual'],
-                        'license':'AI-generated locally; review model and media licenses',
-                        'artist':'Locally configured ComfyUI/Wan workflow',
-                        'restrictions':'ILLUSTRATIVE — NOT HISTORICAL FOOTAGE',
-                        'scene':idx}
-                       for idx,scene in enumerate(scenes,1)
-                       if 'AI-generated' in scene.get('visual_provenance','')]
-            if generated:
-                credits.extend(generated)
-                sheet=MEDIA_DIR/job_id/'media_credits.json'
-                atomic_json(sheet,{'notice':'Every archival image and generated clip requires human media review. AI clips must remain labeled.',
-                                   'items':credits})
-                credit_path=str(sheet)
+        # Video generation is deliberately deferred until AFTER human
+        # factual clearance and final render approval.
         title=job['title'].strip();slug=slugify(title)+'_'+job_id[:6]
         research_leads=make_research_leads(job['prompt'],
                                            MEDIA_DIR/job_id/'research_leads.json',
