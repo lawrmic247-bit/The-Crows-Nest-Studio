@@ -13,7 +13,13 @@ from tkinter import filedialog,messagebox,scrolledtext,ttk
 import production_engine as engine
 import update_engine
 
-NAVY='#202a33'; PANEL='#303d49'; GOLD='#9fc5bc'; CREAM='#e0e6e8'; MUTED='#bac7ce'
+SOFT_LIGHT=update_engine.load_settings().get('appearance')=='soft_light'
+NAVY='#f2f5f2' if SOFT_LIGHT else '#202a33'
+PANEL='#dfe7e2' if SOFT_LIGHT else '#303d49'
+GOLD='#477669' if SOFT_LIGHT else '#9fc5bc'
+CREAM='#23382f' if SOFT_LIGHT else '#e0e6e8'
+MUTED='#50695f' if SOFT_LIGHT else '#bac7ce'
+HEADING_BG='#b7cbbb' if SOFT_LIGHT else '#425260'
 
 
 class ProductionStudio(tk.Toplevel):
@@ -54,7 +60,7 @@ class ProductionStudio(tk.Toplevel):
                   foreground=[('selected','#ffffff')])
         style.configure('Queue.Treeview',background=PANEL,fieldbackground=PANEL,
                         foreground=CREAM,rowheight=31,font=('Segoe UI',10))
-        style.configure('Queue.Treeview.Heading',background='#425260',
+        style.configure('Queue.Treeview.Heading',background=HEADING_BG,
                         foreground=CREAM,font=('Segoe UI',10,'bold'))
         style.map('Queue.Treeview',background=[('selected','#48655e')],
                   foreground=[('selected','#ffffff')])
