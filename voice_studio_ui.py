@@ -3,87 +3,165 @@ from __future__ import annotations
 import os, subprocess, sys, tempfile, threading, tkinter as tk, wave
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk, scrolledtext
+from audio_playback import AudioPlayer, PlaybackError
 from voice_profiles import (PROFILE_DIR, APPDATA, DEFAULT_ACTING, create_profile,
                             get_audio,get_profile,list_profiles,clean_recording,update_profile)
 
-NAVY='#071523';PANEL='#10243b';GOLD='#e8ba65';CREAM='#f0e5ca';MUTED='#a6b7ca'
+NAVY='#202a33';PANEL='#303d49';GOLD='#9fc5bc';CREAM='#e0e6e8';MUTED='#bac7ce'
 
 class VoiceStudio(tk.Toplevel):
     def __init__(self, parent, on_use=None):
         super().__init__(parent)
-        self.title("THE CROW'S NEST — VOICE STUDIO")
-        self.geometry('850x760');self.minsize(700,550)
+        self.title("The Crow's Nest | Voice Studio")
+        self.geometry('950x750')
+        self.minsize(735,570)
         self.configure(bg=NAVY)
-        self.status=tk.StringVar(value='Import or record your voice to begin.')
-        tk.Label(self,textvariable=self.status,bg=PANEL,fg=CREAM,wraplength=790,anchor='w',pady=9).pack(side='bottom',fill='x')
-        canvas=tk.Canvas(self,bg=NAVY,highlightthickness=0)
-        bar=ttk.Scrollbar(self,orient='vertical',command=canvas.yview)
-        canvas.configure(yscrollcommand=bar.set)
-        bar.pack(side='right',fill='y');canvas.pack(side='left',fill='both',expand=True)
-        body=tk.Frame(canvas,bg=NAVY)
-        pane=canvas.create_window((0,0),window=body,anchor='nw')
-        body.bind('<Configure>',lambda e:canvas.configure(scrollregion=canvas.bbox('all')))
-        canvas.bind('<Configure>',lambda e:canvas.itemconfigure(pane,width=e.width))
         self.on_use=on_use
+        self.player=AudioPlayer()
         self.stream=None;self.captured=[];self.recording=False;self.sample_rate=48000
-        self.selected_id=None
-        self.busy=False
-        self._label(body,'VOICE STUDIO  /  RECORD • CLEAN • CLONE',20)
-        tk.Label(body,text='Original recordings stay untouched. Cleanup never shifts pitch or alters vocal formants.',
-                 bg=NAVY,fg=MUTED,font=('Segoe UI',10)).pack(anchor='w',padx=16)
-        row=tk.Frame(body,bg=NAVY);row.pack(fill='x',padx=15,pady=8)
+        self.selected_id=None;self.busy=False
         self.voice_var=tk.StringVar()
+        self.name_var=tk.StringVar()
+        self.level=tk.StringVar(value='light')
         self.choices={}
-        self.selector=ttk.Combobox(row,textvariable=self.voice_var,state='readonly',width=48)
+        self.clone_text=tk.StringVar(value="This is The Crow's Nest. We remember those who stood the watch.")
+        self.status=tk.StringVar(value='Start by importing or recording a reference voice.')
+        style=ttk.Style(self)
+        style.configure('Voice.TNotebook',background=NAVY,borderwidth=0)
+        style.configure('Voice.TNotebook.Tab',font=('Segoe UI',11),padding=(17,11),
+                        background=PANEL,foreground=CREAM)
+        style.map('Voice.TNotebook.Tab',background=[('selected','#446059')],
+                  foreground=[('selected','#ffffff')])
+        style.configure('Voice.TButton',font=('Segoe UI',10),padding=(12,9))
+        style.configure('Voice.TEntry',font=('Segoe UI',11),padding=6)
+        style.configure('Voice.TCombobox',font=('Segoe UI',11),padding=5)
+
+        header=tk.Frame(self,bg=NAVY,padx=22,pady=16)
+        header.pack(fill='x')
+        tk.Label(header,text='Voice Studio',bg=NAVY,fg=CREAM,
+                 font=('Segoe UI',23,'bold')).pack(anchor='w')
+        tk.Label(header,text='Record  •  Listen  •  Refine  •  Use your own voice',
+                 bg=NAVY,fg=MUTED,font=('Segoe UI',11)).pack(anchor='w',pady=(3,0))
+
+        picker=tk.Frame(self,bg=PANEL,padx=19,pady=13)
+        picker.pack(fill='x',padx=18,pady=(0,10))
+        tk.Label(picker,text='CURRENT VOICE PROFILE',bg=PANEL,fg=MUTED,
+                 font=('Segoe UI',9,'bold')).pack(anchor='w',pady=(0,6))
+        line=tk.Frame(picker,bg=PANEL);line.pack(fill='x')
+        self.selector=ttk.Combobox(line,textvariable=self.voice_var,
+                                   state='readonly',style='Voice.TCombobox')
         self.selector.pack(side='left',fill='x',expand=True)
         self.selector.bind('<<ComboboxSelected>>',lambda e:self.load())
-        ttk.Button(row,text='Import reference audio',command=self.import_audio).pack(side='left',padx=(8,0))
-        ttk.Button(row,text='Refresh',command=self.refresh).pack(side='left',padx=(8,0))
-        mic=tk.Frame(body,bg=NAVY);mic.pack(fill='x',padx=15,pady=(0,8))
-        ttk.Button(mic,text='Record microphone',command=self.record).pack(side='left')
-        ttk.Button(mic,text='Stop and save recording',command=self.stop_recording).pack(side='left',padx=8)
-        ttk.Button(mic,text='Install mic support',command=self.install_mic).pack(side='left',padx=8)
-        self._label(body,'VOICE PROFILE')
-        self.name_var=tk.StringVar();ttk.Entry(body,textvariable=self.name_var).pack(fill='x',padx=16,pady=(0,8))
-        self._label(body,'REFERENCE TRANSCRIPT — EXACT WORDS SPOKEN IN YOUR CLIP')
-        self.transcript=scrolledtext.ScrolledText(body,height=3,wrap='word',font=('Segoe UI',10))
-        self.transcript.pack(fill='x',padx=16,pady=(0,9))
-        self._label(body,'ACTING GUIDE — HOW THE CHARACTER SHOULD SOUND')
-        self.direction=scrolledtext.ScrolledText(body,height=4,wrap='word',font=('Segoe UI',10))
-        self.direction.pack(fill='x',padx=16,pady=(0,9))
-        hint=('Acting notes describe the desired delivery. Qwen Base cloning uses the real reference audio and transcript; '
-              'it does NOT accept an independent acting prompt. A separate VoiceDesign engine can create fictional voices from text.')
-        tk.Label(body,text=hint,wraplength=790,justify='left',bg=NAVY,fg=MUTED).pack(fill='x',padx=16,pady=(0,6))
-        ttk.Button(body,text='Save name / transcript / acting notes',command=self.save).pack(anchor='w',padx=16,pady=(0,8))
-        self._label(body,'GENTLE CLEANUP — A/B BEFORE YOU USE IT')
-        cleanup=tk.Frame(body,bg=NAVY);cleanup.pack(fill='x',padx=16,pady=(0,10))
-        self.level=tk.StringVar(value='light')
-        ttk.Combobox(cleanup,textvariable=self.level,state='readonly',values=['off','light','balanced','strong'],width=12).pack(side='left')
-        ttk.Button(cleanup,text='Clean recording',command=self.clean).pack(side='left',padx=7)
-        ttk.Button(cleanup,text='Play ORIGINAL',command=lambda:self.play('original')).pack(side='left',padx=7)
-        ttk.Button(cleanup,text='Play CLEANED',command=lambda:self.play('cleaned')).pack(side='left',padx=7)
-        ttk.Button(cleanup,text='Use as AI narrator',command=self.use_voice).pack(side='left',padx=7)
-        ttk.Button(cleanup,text='Export WAV',command=self.export_wav).pack(side='left',padx=7)
-        self._label(body,'AI VOICE CLONING — OPTIONAL LOCAL MODEL')
-        tk.Label(body,text='Uses Qwen3-TTS Base. Requires an installed model; best with a capable GPU. Your voice reference stays on your computer.',
-                 wraplength=790,justify='left',bg=NAVY,fg=MUTED).pack(fill='x',padx=16)
-        self.clone_text=tk.StringVar(value="This is The Crow's Nest. From the first watch to the final bell, the stories remain.")
-        ttk.Entry(body,textvariable=self.clone_text).pack(fill='x',padx=16,pady=(5,6))
-        bottom=tk.Frame(body,bg=NAVY);bottom.pack(fill='x',padx=16)
-        ttk.Button(bottom,text='Generate CLONE preview',command=self.clone_preview).pack(side='left')
-        ttk.Button(bottom,text='Design a new FICTIONAL voice from prompt',command=self.design).pack(side='left',padx=10)
-        ttk.Button(bottom,text='Open voice library',command=self.open_library).pack(side='left')
-        def wheel(e):
-            if e.delta and not isinstance(self.focus_get(),tk.Text):
-                canvas.yview_scroll(int(-e.delta/120),'units')
-        canvas.bind('<MouseWheel>',wheel)
-        body.bind('<MouseWheel>',wheel)
+        ttk.Button(line,text='Open library',style='Voice.TButton',
+                   command=self.open_library).pack(side='left',padx=(10,0))
+
+        tabs=ttk.Notebook(self,style='Voice.TNotebook')
+        tabs.pack(fill='both',expand=True,padx=18,pady=(0,10))
+
+        def page(title):
+            outer=tk.Frame(tabs,bg=NAVY)
+            tabs.add(outer,text=title)
+            canvas=tk.Canvas(outer,bg=NAVY,highlightthickness=0)
+            scroll=ttk.Scrollbar(outer,orient='vertical',command=canvas.yview)
+            canvas.configure(yscrollcommand=scroll.set)
+            scroll.pack(side='right',fill='y')
+            canvas.pack(side='left',fill='both',expand=True)
+            content=tk.Frame(canvas,bg=NAVY,padx=14,pady=12)
+            win=canvas.create_window((0,0),window=content,anchor='nw')
+            content.bind('<Configure>',lambda e,c=canvas:c.configure(scrollregion=c.bbox('all')))
+            canvas.bind('<Configure>',lambda e,c=canvas,w=win:c.itemconfigure(w,width=e.width))
+            return content
+
+        record_page=page('1. Record & import')
+        self._label(record_page,'Start with an actual voice recording',14)
+        tk.Label(record_page,text='Use a quiet 20–30 second recording. This is saved privately on your PC. '
+                  'The source file is never overwritten.',bg=NAVY,fg=MUTED,
+                  wraplength=760,justify='left',font=('Segoe UI',11)).pack(
+                      anchor='w',padx=16,pady=(0,16))
+        row=tk.Frame(record_page,bg=NAVY);row.pack(fill='x',padx=16,pady=(0,12))
+        ttk.Button(row,text='Import audio file',style='Voice.TButton',
+                   command=self.import_audio).pack(side='left',padx=(0,10))
+        ttk.Button(row,text='Start microphone',style='Voice.TButton',
+                   command=self.record).pack(side='left',padx=(0,10))
+        ttk.Button(row,text='Stop & save recording',style='Voice.TButton',
+                   command=self.stop_recording).pack(side='left')
+        ttk.Button(record_page,text='Install microphone support',style='Voice.TButton',
+                   command=self.install_mic).pack(anchor='w',padx=16,pady=(0,20))
+        self._label(record_page,'Profile name')
+        ttk.Entry(record_page,textvariable=self.name_var,
+                  style='Voice.TEntry').pack(fill='x',padx=16,pady=(2,12))
+        tk.Label(record_page,text='Your saved voice profiles appear in the selector above. '
+                 'You can keep different voices and performances without changing your originals.',
+                 bg=NAVY,fg=MUTED,wraplength=750,justify='left',
+                 font=('Segoe UI',10)).pack(anchor='w',padx=16,pady=(2,12))
+
+        clean_page=page('2. Listen & clean')
+        self._label(clean_page,'Hear your actual voice before changing anything',14)
+        tk.Label(clean_page,text='The cleanup makes a separate copy. Start with LIGHT; '
+                 'a stronger setting can remove too much vocal texture.',
+                 bg=NAVY,fg=MUTED,wraplength=760,justify='left',
+                 font=('Segoe UI',11)).pack(anchor='w',padx=16,pady=(0,14))
+        audio=tk.Frame(clean_page,bg=NAVY);audio.pack(fill='x',padx=16,pady=(0,13))
+        ttk.Button(audio,text='▶ Play original',style='Voice.TButton',
+                   command=lambda:self.play('original')).pack(side='left',padx=(0,10))
+        ttk.Button(audio,text='▶ Play cleaned',style='Voice.TButton',
+                   command=lambda:self.play('cleaned')).pack(side='left',padx=(0,10))
+        ttk.Button(audio,text='■ Stop audio',style='Voice.TButton',
+                   command=self.stop_audio).pack(side='left')
+        self._label(clean_page,'Cleanup intensity')
+        row=tk.Frame(clean_page,bg=NAVY);row.pack(fill='x',padx=16,pady=(2,12))
+        ttk.Combobox(row,textvariable=self.level,state='readonly',
+                     values=['off','light','balanced','strong'],
+                     width=15,style='Voice.TCombobox').pack(side='left',padx=(0,12))
+        ttk.Button(row,text='Make cleaned copy',style='Voice.TButton',
+                   command=self.clean).pack(side='left')
+        tk.Label(clean_page,text='Compare original vs. cleaned. Use what sounds most like you. '
+                 'Playback uses an internal player with a Stop button, not Windows file associations.',
+                 bg=NAVY,fg=MUTED,wraplength=760,justify='left',
+                 font=('Segoe UI',11)).pack(anchor='w',padx=16,pady=(3,16))
+        ttk.Button(clean_page,text='Export cleaned or original WAV',style='Voice.TButton',
+                   command=self.export_wav).pack(anchor='w',padx=16)
+
+        clone_page=page('3. Direct & clone')
+        self._label(clone_page,'Words spoken in the reference clip')
+        self.transcript=scrolledtext.ScrolledText(clone_page,height=3,wrap='word',
+                    font=('Segoe UI',11),bg=PANEL,fg=CREAM,insertbackground=CREAM,
+                    relief='flat',padx=10,pady=8)
+        self.transcript.pack(fill='x',padx=16,pady=(2,11))
+        self._label(clone_page,'Voice acting guide')
+        self.direction=scrolledtext.ScrolledText(clone_page,height=4,wrap='word',
+                    font=('Segoe UI',11),bg=PANEL,fg=CREAM,insertbackground=CREAM,
+                    relief='flat',padx=10,pady=8)
+        self.direction.pack(fill='x',padx=16,pady=(2,7))
+        tk.Label(clone_page,text='Notes are saved with this voice. Qwen Base clones from the '
+                 'reference clip and exact transcript; it does not directly follow acting notes.',
+                 bg=NAVY,fg=MUTED,wraplength=760,justify='left',
+                 font=('Segoe UI',10)).pack(anchor='w',padx=16,pady=(0,10))
+        row=tk.Frame(clone_page,bg=NAVY);row.pack(fill='x',padx=16,pady=(0,13))
+        ttk.Button(row,text='Save profile and notes',style='Voice.TButton',
+                   command=self.save).pack(side='left',padx=(0,10))
+        ttk.Button(row,text='Use voice for narration',style='Voice.TButton',
+                   command=self.use_voice).pack(side='left')
+        self._label(clone_page,'Try an AI-generated line')
+        ttk.Entry(clone_page,textvariable=self.clone_text,
+                  style='Voice.TEntry').pack(fill='x',padx=16,pady=(2,11))
+        row=tk.Frame(clone_page,bg=NAVY);row.pack(fill='x',padx=16,pady=(0,17))
+        ttk.Button(row,text='Generate voice clone',style='Voice.TButton',
+                   command=self.clone_preview).pack(side='left',padx=(0,10))
+        ttk.Button(row,text='Design fictional voice',style='Voice.TButton',
+                   command=self.design).pack(side='left')
         self.direction.insert('1.0',DEFAULT_ACTING)
+
+        footer=tk.Frame(self,bg=PANEL,padx=17,pady=11)
+        footer.pack(fill='x')
+        tk.Label(footer,textvariable=self.status,bg=PANEL,fg=CREAM,anchor='w',
+                 justify='left',wraplength=850,
+                 font=('Segoe UI',10)).pack(fill='x')
         self.refresh()
         self.protocol('WM_DELETE_WINDOW',self.close)
 
-    def _label(self,parent,text,size=10):
-        tk.Label(parent,text=text,bg=NAVY,fg=GOLD,font=('Segoe UI',size,'bold')).pack(anchor='w',padx=16,pady=(8,3))
+    def _label(self,parent,text,size=11):
+        tk.Label(parent,text=text,bg=NAVY,fg=CREAM,font=('Segoe UI',size,'bold')).pack(anchor='w',padx=16,pady=(8,5))
 
     def _open(self,path):
         if sys.platform=='win32':os.startfile(str(path))
@@ -189,12 +267,30 @@ class VoiceStudio(tk.Toplevel):
         pid=self.selected_id
         self._background('Cleaning recording without changing pitch or identity...',
                          lambda:clean_recording(pid,self.level.get()),
-                         lambda path:(self.status.set('Cleaned copy created; A/B against ORIGINAL before selecting.'),self._open(path)))
+                         lambda path:self.status.set('Cleaned copy saved. Press Play cleaned to compare it against your original.'))
+
+    def _play_audio(self,path):
+        try:
+            backend=self.player.play(path)
+            self.status.set(f'Playing {Path(path).name} using {backend}. Press Stop audio to end playback.')
+        except (PlaybackError,OSError,ValueError) as e:
+            self._fail(str(e))
 
     def play(self,kind):
-        if not self.selected_id:return
-        try:self._open(get_audio(self.selected_id,kind))
-        except Exception as e:self._fail(str(e))
+        if not self.selected_id:
+            self.status.set('Choose or import a voice profile before playing audio.')
+            return
+        try:
+            path=get_audio(self.selected_id,kind)
+        except Exception as e:
+            self._fail(str(e))
+            return
+        self._play_audio(path)
+
+    def stop_audio(self):
+        self.player.stop()
+        self.status.set('Audio stopped.')
+
 
     def export_wav(self):
         if not self.selected_id:return
@@ -223,7 +319,7 @@ class VoiceStudio(tk.Toplevel):
             from qwen_voice import clone
             return clone(pid,text,out)
         self._background('Loading local Qwen model and creating voice clone (may be slow)...',fn,
-                         lambda p:(self.status.set('Clone preview created. Listen before using.'),self._open(p)))
+                         lambda p:self._play_audio(p))
 
     def design(self):
         name=simpledialog.askstring('Fictional voice','New character voice name:',parent=self)
@@ -242,6 +338,7 @@ class VoiceStudio(tk.Toplevel):
         self._open(PROFILE_DIR)
 
     def close(self):
+        self.player.stop()
         if self.recording:
             try:self.stream.stop();self.stream.close()
             except Exception:pass
