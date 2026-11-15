@@ -152,6 +152,50 @@ jobs:
           app.close()
           print('Quick AI opens no notes picker; discovered sources display in fact checker.')
           PY
+      - name: Verify one-click documentary workflow and navigation
+        run: |
+          xvfb-run -a python - <<'PY'
+          from unittest.mock import patch
+          from gui import App
+          from production_engine import OllamaSetupError
+          app=App()
+          app.update()
+          assert len(app.tabs.tabs())==5
+          assert len(app.nav_buttons)==5
+          assert app.topic_var.get()==''
+          assert app.want_full.get() and app.want_shorts.get() and app.want_tiktok.get()
+          assert app.visual_style_var.get()=='Hybrid documentary'
+          app.topic_var.set('Donald E Ballard Navy corpsman Medal of Honor documentary')
+          app.minutes_var.set('10')
+          with patch('production_engine.select_local_model',return_value='qwen3:4b'):
+              with patch.object(app,'_queue_production') as queue:
+                  app.start_production()
+                  queue.assert_called_once()
+                  args=queue.call_args.args
+                  assert args[1]==10 and args[2]=='hybrid'
+                  assert args[3]==['full','shorts','tiktok']
+          with patch('production_engine.select_local_model',
+                     side_effect=OllamaSetupError('No model installed')):
+              with patch.object(app,'text_model_setup') as setup:
+                  app.start_production()
+                  setup.assert_called_once()
+                  assert callable(setup.call_args.kwargs['on_select'])
+          app._go(1);app.update()
+          assert app.section_title.get()=='Voice studio'
+          app._go(2);app.update()
+          assert app.section_title.get()=='Review and render'
+          app.output_aspect.set('short')
+          app._sync_output_aspect()
+          assert app.short.get() and not app.wide.get()
+          app.script.insert('1.0','A draft to clear for new film')
+          app._loaded_script_snapshot=app.script.get('1.0','end').strip()
+          app.new_film()
+          assert app.script.get('1.0','end').strip()==''
+          assert app.topic_var.get()==''
+          assert app.tabs.index(app.tabs.select())==0
+          app.close()
+          print('Film brief, automatic model setup, navigation, output choice and fresh-project reset passed.')
+          PY
       - name: Capture redesigned main window for visual QA
         run: |
           xvfb-run -a -s "-screen 0 1280x1024x24" python - <<'PY'
