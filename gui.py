@@ -966,6 +966,7 @@ class App(tk.Tk):
         for file in sorted(folder.glob('*.json'))[:60]:
             try:
                 job=production_engine.import_chatgpt_job(file,source_folder=folder)
+                if job.get('removed'):continue
                 if job['id'] not in existing:
                     existing.add(job['id'])
                     new.append(job['id'])
