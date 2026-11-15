@@ -52,6 +52,32 @@ _DECADES = {20:'twenties',30:'thirties',40:'forties',50:'fifties',
             60:'sixties',70:'seventies',80:'eighties',90:'nineties'}
 _YEAR_PATTERN = re.compile(r'(?<![\w])((?:1[0-9]{3}|20[0-9]{2}))(s?)(?![\w])')
 
+_MONTHS = ('January','February','March','April','May','June','July','August',
+           'September','October','November','December')
+_MONTH_EXPR = '|'.join(_MONTHS)
+_DATE_PATTERN = re.compile(
+    r'\b('+_MONTH_EXPR+r')\s+([1-9]|[12][0-9]|3[01])(?:st|nd|rd|th)?'
+    r',?\s+((?:1[0-9]{3}|20[0-9]{2}))\b', re.IGNORECASE)
+_DMY_PATTERN = re.compile(
+    r'\b([1-9]|[12][0-9]|3[01])(?:st|nd|rd|th)?\s+'
+    r'('+_MONTH_EXPR+r')\s+((?:1[0-9]{3}|20[0-9]{2}))\b', re.IGNORECASE)
+_ORDINALS = {
+    1:'first',2:'second',3:'third',4:'fourth',5:'fifth',6:'sixth',7:'seventh',
+    8:'eighth',9:'ninth',10:'tenth',11:'eleventh',12:'twelfth',13:'thirteenth',
+    14:'fourteenth',15:'fifteenth',16:'sixteenth',17:'seventeenth',18:'eighteenth',
+    19:'nineteenth',20:'twentieth',30:'thirtieth'
+}
+
+
+def spoken_day(day:int)->str:
+    if not 1<=day<=31:
+        raise ValueError('Day must be 1–31.')
+    if day in _ORDINALS:
+        return _ORDINALS[day]
+    return _TENS[day//10] + '-' + _ORDINALS[day%10]
+
+
+
 
 def _spoken_number(n: int) -> str:
     if n < 20:
@@ -111,6 +137,13 @@ def normalize_for_speech(text: str) -> str:
     """Speech-only year and pronunciation adjustments without touching on-screen captions."""
     if not isinstance(text,str):
         raise TypeError('Narration must be text.')
+    # Month-name dates are unambiguous; leave numeric 05/06/1968 untouched.
+    text=_DATE_PATTERN.sub(
+        lambda m: f'{m.group(1)} {spoken_day(int(m.group(2)))}, {spoken_year(int(m.group(3)))}',
+        text)
+    text=_DMY_PATTERN.sub(
+        lambda m: f'{spoken_day(int(m.group(1)))} {m.group(2)} {spoken_year(int(m.group(3)))}',
+        text)
     text=_YEAR_PATTERN.sub(lambda m: spoken_year(int(m.group(1)),bool(m.group(2))),text)
     pronunciations=load_pronunciations()
     for spelling,spoken in sorted(pronunciations.items(),key=lambda kv:-len(kv[0])):
