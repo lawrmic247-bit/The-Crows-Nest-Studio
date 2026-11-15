@@ -856,7 +856,15 @@ class App(tk.Tk):
             script='\n\n'.join(scene.get('narration','') for scene in data['scenes'])
         except (ValueError,OSError) as error:
             messagebox.showwarning('Script needed',str(error));return
-        FactCheckDialog(self,data['slug'],data['title'],script)
+        leads=None
+        if self.loaded_production_job:
+            try:
+                record=production_engine.get_job(self.loaded_production_job)
+                candidate=record.get('research_leads','')
+                if candidate and Path(candidate).is_file():leads=Path(candidate)
+            except (OSError,ValueError,KeyError):
+                pass
+        FactCheckDialog(self,data['slug'],data['title'],script,source_leads=leads)
 
     def display_comfort(self):
         """Light/dark and text scaling are preferences, applied on next launch."""
