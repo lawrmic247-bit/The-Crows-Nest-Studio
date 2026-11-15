@@ -43,8 +43,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("The Crow's Nest | Studio " + update_engine.VERSION)
-        self.geometry('1090x785')
-        self.minsize(790,605)
+        self.geometry('1160x830')
+        self.minsize(850,660)
         self.configure(bg=INK)
         if sys.platform == 'win32':
             try:
@@ -88,7 +88,7 @@ class App(tk.Tk):
         header.pack(fill='x')
         tk.Label(header,text="The Crow's Nest",bg=INK,fg=CREAM,
                  font=('Segoe UI',23,'bold')).pack(anchor='w')
-        tk.Label(header,text='A clear path from idea to finished documentary',
+        tk.Label(header,text='One topic → Full documentary + YouTube Short + TikTok. Human-reviewed before publishing.',
                  bg=INK,fg=MUTED,font=('Segoe UI',11)).pack(anchor='w',pady=(3,0))
 
         self.tabs=ttk.Notebook(self,style='Studio.TNotebook')
@@ -99,24 +99,24 @@ class App(tk.Tk):
             self.tabs.add(frame,text=label)
             return frame
 
-        create=page('1. Write')
-        voice=page('2. Narrate')
-        export=page('3. Review & render')
-        publish=page('4. Preview & publish')
-        activity=page('5. Activity & settings')
+        create=page('1 · STORY')
+        voice=page('2 · VOICE')
+        export=page('3 · VERIFY & RENDER')
+        publish=page('4 · WATCH & PUBLISH')
+        activity=page('5 · SETTINGS')
         self.write_page=create
         self.voice_page=voice
         self.export_page=export
         self.publish_page=publish
         self.activity_page=activity
 
-        self._label(create,'Start with a topic or your own script')
+        self._label(create,'Start with a topic, or polish a prepared script')
         tk.Label(create,text='Create a documentary draft with Ollama, or type your narration below. '
-                 'Separate scenes with blank lines.',
+                 'Choose Create from one topic for three formats at once. Separate existing script scenes with blank lines.',
                  bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=900,justify='left').pack(
                      anchor='w',pady=(3,17))
         prompt_bar=tk.Frame(create,bg=INK);prompt_bar.pack(fill='x',pady=(0,15))
-        ttk.Button(prompt_bar,text='Open prompt production queue',
+        ttk.Button(prompt_bar,text='Create from one topic',
                    command=self.open_production_studio).pack(side='left',padx=(0,10))
         ttk.Button(prompt_bar,text='Quick AI draft',
                    command=self.prompt_draft).pack(side='left')
@@ -198,8 +198,8 @@ class App(tk.Tk):
         fmt=tk.Frame(export,bg=INK);fmt.pack(fill='x',pady=(5,19))
         self.short=tk.BooleanVar(value=True)
         self.wide=tk.BooleanVar(value=False)
-        ttk.Checkbutton(fmt,text='Vertical Short (9:16)',variable=self.short).pack(side='left',padx=(0,20))
-        ttk.Checkbutton(fmt,text='Widescreen video (16:9)',variable=self.wide).pack(side='left')
+        ttk.Checkbutton(fmt,text='YouTube Short / TikTok • 9:16',variable=self.short).pack(side='left',padx=(0,20))
+        ttk.Checkbutton(fmt,text='Full YouTube documentary • 16:9',variable=self.wide).pack(side='left')
         self._label(export,'Optional footage folder')
         pathrow=tk.Frame(export,bg=INK);pathrow.pack(fill='x',pady=(6,7))
         self.folder=tk.StringVar(value=str(FOOTAGE))
@@ -227,7 +227,7 @@ class App(tk.Tk):
                    command=self.open_exports).pack(side='left')
 
         self._label(publish,'Review the complete video before publishing')
-        tk.Label(publish,text='Preview the finished MP4 with sound. Nothing is posted automatically. '
+        tk.Label(publish,text='Preview the complete MP4 with sound. Nothing is uploaded automatically. '
                  'When you approve it, Studio will open Buffer and your export folder '
                  'so you can attach the file and choose your channels.',
                  bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=900,
@@ -360,6 +360,8 @@ class App(tk.Tk):
                 for previous,current in zip(old_scenes,scenes):
                     current['heading']=previous.get('heading',current['heading'])
                     if 'visual' in previous and 'visual' not in current:current['visual']=previous['visual']
+                    if 'visual_provenance' in previous:
+                        current['visual_provenance']=previous['visual_provenance']
                     if (previous.get('narration')==current['narration'] and
                             old.get('narrator',{}).get('voice')==self._voice() and
                             float(old.get('narrator',{}).get('speed',0.97))==self._speed() and
@@ -575,8 +577,9 @@ class App(tk.Tk):
         self.title_var.set(data['title'])
         self.script.delete('1.0','end')
         self.script.insert('1.0','\n\n'.join(x.get('narration','') for x in data['scenes']))
-        fmt=__import__('production_engine').get_job(job_id)['format']
-        self.short.set(fmt in ('short','both'));self.wide.set(fmt in ('wide','both'))
+        delivery=data.get('deliverable','full')
+        self.short.set(delivery in ('shorts','tiktok'))
+        self.wide.set(delivery=='full')
         self.review.set(False);self.demo.set(False);self.last_preview=None
         for label,ident in VOICE_OPTIONS.items():
             if ident==__import__('production_engine').get_job(job_id)['voice']:
