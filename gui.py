@@ -149,11 +149,13 @@ class App(tk.Tk):
         prompt_bar=tk.Frame(create,bg=INK);prompt_bar.pack(fill='x',pady=(0,15))
         ttk.Button(prompt_bar,text='Create from one topic',
                    command=self.open_production_studio).pack(side='left',padx=(0,10))
-        ttk.Button(prompt_bar,text='Quick AI draft',
+        ttk.Button(prompt_bar,text='Quick AI: research & draft',
                    command=self.prompt_draft).pack(side='left')
         self.chat_ready_button=ttk.Button(prompt_bar,text='Review ChatGPT draft',
                    state='disabled',command=self.open_chat_ready)
         self.chat_ready_button.pack(side='left',padx=(10,0))
+        ttk.Button(create,text='View discovered research sources',
+                   command=self.open_research_sources).pack(anchor='w',pady=(0,11))
         self._label(create,'Episode title')
         self.title_var=tk.StringVar(value="The History of the Crow's Nest")
         ttk.Entry(create,textvariable=self.title_var,font=('Segoe UI',12)).pack(
@@ -691,24 +693,44 @@ class App(tk.Tk):
                 break
 
     def prompt_draft(self):
-        topic=simpledialog.askstring('Prompt to script',
-            'What is the episode about? Enter a full topic or production prompt:',parent=self,initialvalue=self.title_var.get())
+        topic=simpledialog.askstring(
+            'Research and draft a documentary',
+            'What topic should Studio research and turn into a video?',
+            parent=self,initialvalue=self.title_var.get())
         if not topic:return
-        minutes=simpledialog.askinteger('Approximate duration','Target duration in minutes (1–20):',minvalue=1,maxvalue=20,initialvalue=5,parent=self)
-        if minutes is None:return
-        notes=filedialog.askopenfilename(title='OPTIONAL: researched source notes TXT (Cancel = unverified draft)',
-                            filetypes=[('Text notes','*.txt'),('All files','*.*')],parent=self)
+        duration=simpledialog.askinteger(
+            'Full documentary length','Target length in minutes (1–30):',
+            minvalue=1,maxvalue=30,initialvalue=10,parent=self)
+        if duration is None:return
+        try:
+            job=production_engine.create_job(
+                topic,minutes=duration,fmt='both',voice=self._voice(),
+                auto_media=True,visual_style='hybrid',
+                deliverables=['full','shorts','tiktok'])
+        except (ValueError,OSError) as exc:
+            messagebox.showerror('Cannot create documentary',str(exc),parent=self)
+            return
         def work():
-            cmd=[python_bin(),str(ROOT/'draft_with_ollama.py'),'--topic',topic,'--minutes',str(minutes)]
-            if notes:cmd+=['--notes',notes]
-            self._command(cmd,timeout=600)
-            import re
-            slug=re.sub('[^a-z0-9]+','_',topic.lower()).strip('_')[:50]
-            path=ROOT/'episodes'/f'{slug}_UNREVIEWED.json'
-            data=json.loads(path.read_text(encoding='utf-8'))
-            self.pipe.put(('draft_loaded',(topic,'\n\n'.join(x['narration'] for x in data['scenes']))))
-            self.pipe.put(('done','Unverified draft loaded. Review and fact-check before generating a publishable video.'))
-        self._run_task('Writing an UNVERIFIED documentary draft with your local Ollama model...',work)
+            result=production_engine.run_job(
+                job['id'],progress=lambda message:self.pipe.put(('update_log',message)))
+            self.pipe.put(('quick_draft_ready',(result['id'],result['manifest'],
+                        result.get('research_source_count',0))))
+            self.pipe.put(('done','Research and draft prepared. Review facts and sources before rendering.'))
+        self._run_task('Researching your topic and writing a source-led draft...',work)
+
+    def open_research_sources(self):
+        if not self.loaded_production_job:
+            messagebox.showinfo('No research yet','Run Quick AI: research & draft first, '
+                                'or load a research-backed job from the queue.',parent=self)
+            return
+        try:
+            job=production_engine.get_job(self.loaded_production_job)
+            path=Path(job.get('research_leads',''))
+            if not path.is_file():
+                raise ValueError('No research source file was found for this job.')
+            self._open(path)
+        except (OSError,ValueError,KeyError) as error:
+            messagebox.showwarning('Research unavailable',str(error),parent=self)
 
     def _voice(self):
         return VOICE_OPTIONS[self.voice_var.get()]
@@ -948,7 +970,12 @@ class App(tk.Tk):
                 msg=self.pipe.get_nowait()
                 if isinstance(msg,tuple):
                     kind,value=msg
-                    if kind=='draft_loaded':
+                    if kind=='quick_draft_ready':
+                        job_id,manifest,found=value
+                        self.load_production_draft(Path(manifest),job_id)
+                        self.status.set(f'{found} research source lead(s) found. Review the written '
+                                        'script, then review each claim in Fact Checker.')
+                    elif kind=='draft_loaded':
                         self.loaded_manifest_path=None;self.loaded_production_job=None
                         self.title_var.set(value[0]);self.script.delete('1.0','end');self.script.insert('1.0',value[1])
                         self.review.set(False);self.demo.set(False);self.last_preview=None
