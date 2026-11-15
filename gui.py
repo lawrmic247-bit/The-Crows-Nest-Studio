@@ -1245,7 +1245,11 @@ class App(tk.Tk):
             except (OSError,ValueError,TypeError,KeyError):
                 # An incomplete sync or invalid request is not trusted or executed.
                 continue
-        if not new:
+        pending=list(dict.fromkeys(new+[
+            j['id'] for j in production_engine.list_jobs()
+            if j.get('source_file') and not j.get('archived') and
+               j['status'] in ('queued','needs_model')]))
+        if not pending:
             awaiting=[j for j in production_engine.list_jobs()
                       if j.get('source_file') and j['status']=='awaiting_review'
                       and not j.get('archived')
@@ -1254,16 +1258,28 @@ class App(tk.Tk):
                 self.pipe.put(('chat_ready',awaiting[0]['id']))
             return
         self.inbox_busy=True
-        self.status.set('New ChatGPT episode request received. Preparing an unverified draft...')
         def worker():
-            for job_id in new:
-                try:
-                    job=production_engine.run_job(job_id)
-                    if job['status']=='awaiting_review':
-                        self.pipe.put(('chat_ready',job_id))
-                except Exception as exc:
-                    self.pipe.put(('update_log','ChatGPT draft could not run: '+str(exc)))
-            self.pipe.put(('chat_inbox_idle',True))
+            # The explicitly saved Step 1 model is the only authorized script model.
+            # Imports stay in the Needs work queue if no model has been selected.
+            selected=update_engine.load_settings().get('ollama_model','')
+            try:
+                models=production_engine.list_local_models()
+                if not selected or selected not in models:
+                    self.pipe.put(('model_inbox_waiting',len(pending)))
+                    return
+                for job_id in pending:
+                    try:
+                        production_engine.change(job_id,model=selected)
+                        result=production_engine.run_job(job_id)
+                        if result['status']=='awaiting_review':
+                            self.pipe.put(('chat_ready',job_id))
+                    except Exception as exc:
+                        self.pipe.put(('update_log',
+                                       'Imported draft could not run: '+str(exc)))
+            except production_engine.OllamaSetupError:
+                self.pipe.put(('model_inbox_waiting',len(pending)))
+            finally:
+                self.pipe.put(('chat_inbox_idle',True))
         threading.Thread(target=worker,daemon=True).start()
 
     def load_production_draft(self, path:Path, job_id:str):
@@ -1776,6 +1792,9 @@ class App(tk.Tk):
                             self.model_status.set(
                                 str(len(value))+' model(s) installed. Choose one above.'
                                 if value else 'No model installed. Click Install / setup first.')
+                    elif kind=='model_inbox_waiting':
+                        self.pipeline_status.set(
+                            str(value)+' imported job(s) waiting. Select a local writing model in Step 1.')
                     elif kind=='models_error':
                         self.available_models=[]
                         self.models_checked=False
