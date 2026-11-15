@@ -82,6 +82,35 @@ class ShortFormTests(unittest.TestCase):
         safe=social_story(original,"tiktok",rewrite=lambda prompt,target:ungrounded)
         self.assertNotIn("9999",str(safe))
 
+    def test_each_variant_requires_its_own_review(self):
+        with patch.object(engine,"QUEUE",self.root/"queue"):
+            job=engine.create_job(
+                "Remember the documented heroism of a Navy corpsman in Vietnam",
+                fmt="both",auto_media=False)
+            main={"slug":"independent_reviews","title":"Review Example",
+                  "scenes":self.scenes,"approved":False,"sources":[],"media_sources":[]}
+            engine.atomic_json(engine.EPISODES/"independent_reviews.json",main)
+            with patch("fact_checker.sync_report") as sync,patch("fact_checker.save_report"):
+                sync.return_value={"claims":[]}
+                variants=engine.create_story_companions(job,main)
+            engine.change(job["id"],status="awaiting_review",
+                          variants=variants,manifest=variants["full"])
+            with self.assertRaises(ValueError):
+                engine.prepare_for_render(job["id"],deliverable="shorts",
+                                          rights_confirmed=False)
+            with patch("fact_checker.require_clearance",return_value=Path(self.root/"evidence")):
+                approved=engine.prepare_for_render(
+                    job["id"],deliverable="shorts",rights_confirmed=True)
+            self.assertTrue(json.loads(approved.read_text())["approved"])
+            self.assertFalse(json.loads(Path(variants["full"]).read_text())["approved"])
+            self.assertFalse(json.loads(Path(variants["tiktok"]).read_text())["approved"])
+
+    def test_verified_updater_supports_local_video_modules(self):
+        import update_engine
+        self.assertTrue(update_engine.is_allowed("story_variants.py"))
+        self.assertTrue(update_engine.is_allowed("local_video.py"))
+        self.assertFalse(update_engine.is_allowed("private_voice_recording.wav"))
+
     def test_default_both_compat(self):
         with patch.object(engine,"QUEUE",self.root/"queue"):
             job=engine.create_job(
