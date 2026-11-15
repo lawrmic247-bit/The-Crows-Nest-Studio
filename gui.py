@@ -337,6 +337,9 @@ class App(tk.Tk):
         # text editors, lists, or other windows.
         try:
             if event.widget.winfo_toplevel() is not self:
+                other=self.production_window
+                if other is not None and other.winfo_exists():
+                    return other._page_mouse_wheel(event)
                 return
             tab_index=self.tabs.index(self.tabs.select())
             canvas=self._page_scroll_canvases[tab_index]
