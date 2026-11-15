@@ -501,6 +501,7 @@ class App(tk.Tk):
             if job['status']!='awaiting_review' or not job.get('manifest'):
                 raise ValueError('The imported draft is not ready for review.')
             self.load_production_draft(Path(job['manifest']),job['id'])
+            self.reviewed_chat_ids.add(job['id'])
             self.chat_ready_button.configure(state='disabled')
             self.pending_chat_job=None
         except (OSError,ValueError,KeyError) as exc:
@@ -538,7 +539,8 @@ class App(tk.Tk):
                 continue
         if not new:
             awaiting=[j for j in production_engine.list_jobs()
-                      if j.get('source_file') and j['status']=='awaiting_review']
+                      if j.get('source_file') and j['status']=='awaiting_review'
+                      and j['id'] not in self.reviewed_chat_ids]
             if awaiting and not self.pending_chat_job:
                 self.pipe.put(('chat_ready',awaiting[0]['id']))
             return
@@ -829,9 +831,10 @@ class App(tk.Tk):
                     elif kind=='rendered':
                         self._set_rendered(Path(value))
                     elif kind=='chat_ready':
-                        self.pending_chat_job=value
-                        self.chat_ready_button.configure(state='normal')
-                        self.status.set('ChatGPT draft prepared. Click Review ChatGPT draft in Write.')
+                        if value not in self.reviewed_chat_ids:
+                            self.pending_chat_job=value
+                            self.chat_ready_button.configure(state='normal')
+                            self.status.set('ChatGPT draft prepared. Click Review ChatGPT draft in Write.')
                     elif kind=='chat_inbox_idle':
                         self.inbox_busy=False
                     elif kind=='play':
