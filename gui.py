@@ -104,7 +104,11 @@ class App(tk.Tk):
                  bg=INK,fg=MUTED,font=('Segoe UI',11)).pack(anchor='w',pady=(3,0))
 
         self.tabs=ttk.Notebook(self,style='Studio.TNotebook')
-        self.tabs.pack(fill='both',expand=True,padx=20,pady=(0,13))
+        self.tabs.pack(fill='both',expand=True,padx=20,pady=(0,7))
+        self.step_hint=tk.StringVar(value='Start by creating all three formats from one researched topic.')
+        tk.Label(self,textvariable=self.step_hint,bg=INK,fg=MUTED,
+                 font=('Segoe UI',10),anchor='w',justify='left',
+                 wraplength=1060).pack(fill='x',padx=24,pady=(0,10))
 
         def page(label):
             frame=tk.Frame(self.tabs,bg=INK,padx=20,pady=19)
@@ -291,6 +295,20 @@ class App(tk.Tk):
                  font=('Segoe UI',10),anchor='w',justify='left',
                  wraplength=960).pack(fill='x')
         self._set_log('Studio '+update_engine.VERSION+' ready. Choose a step above.\n')
+        hints=[
+            'Create one topic and generate a documentary plus vertical social versions.',
+            'Choose your narrator, hear the audio, then correct any difficult pronunciations.',
+            'Check EVERY factual claim and footage license before the final render.',
+            'Watch the entire video and approve it before opening Buffer.',
+            'Adjust the display, update Studio, or inspect its activity log.'
+        ]
+        self.tabs.bind('<<NotebookTabChanged>>',
+            lambda event:self.step_hint.set(hints[self.tabs.index(self.tabs.select())]))
+        for number in range(1,6):
+            self.bind_all(f'<Control-Key-{number}>',
+                lambda event,idx=number-1:self.tabs.select(idx))
+        self.bind_all('<Control-n>',lambda event:self.open_production_studio())
+        self.bind_all('<Escape>',lambda event:self.stop_audio())
         self.after(1800,self.auto_update_check)
         self.after(150,self.poll)
         self.after(10000,self.poll_chat_inbox)
