@@ -323,6 +323,111 @@ def ollama_generate(model:str,prompt:str,*,predict:int=1400,request=None)->str:
         raise RuntimeError('Ollama is not available locally. Install Ollama, run `ollama pull qwen3:8b`, and retry. '+str(exc)) from exc
 
 
+def _search_terms(prompt:str)->str:
+    """A concise search query, never an instruction sent to an external source."""
+    text=re.sub(r"(?i)^(?:make|create|write|research|tell|explain|produce)\s+"
+                r"(?:me\s+)?(?:(?:a|an|the)\s+)?(?:(?:\d+[\s-]*minute)\s+)?"
+                r"(?:video|documentary|episode|story)?\s*(?:of|about|on)?\s*",
+                "",prompt.strip())
+    words=re.findall(r"[\wÀ-ỹ'-]+",text)
+    return " ".join(words[:14])[:160] or prompt[:100]
+
+
+def _research_json(url:str,*,fetch=None)->dict:
+    """Read from two documented public metadata endpoints only, within time limits."""
+    parts=urllib.parse.urlsplit(url)
+    if parts.scheme!="https" or parts.hostname not in {"en.wikipedia.org","www.loc.gov"}:
+        raise ValueError("Unexpected research service.")
+    if fetch is None:fetch=urllib.request.urlopen
+    req=urllib.request.Request(url,headers={"User-Agent":"CrowsNestStudio/4.4 (research-only)",
+                                            "Accept":"application/json"})
+    with fetch(req,timeout=12) as response:
+        raw=response.read(1_400_001)
+    if len(raw)>1_400_000:
+        raise ValueError("Research API response exceeded limit.")
+    content=json.loads(raw.decode("utf-8"))
+    if not isinstance(content,dict):
+        raise ValueError("Research API response must be an object.")
+    return content
+
+
+def discover_research(topic:str,*,fetch=None)->dict:
+    """Gather real external source records; nothing here is fact-check clearance.
+
+    Wikipedia search results are secondary leads; Library of Congress results
+    are official bibliographic records, not verified support for a specific claim.
+    Browser/search-link fallback is provided if a service is offline.
+    """
+    query=_search_terms(topic)
+    sources=[];warnings=[]
+    q=urllib.parse.quote(query,safe="")
+    requests=(
+        ("Wikipedia","https://en.wikipedia.org/w/rest.php/v1/search/page?q="+q+"&limit=5"),
+        ("Library of Congress","https://www.loc.gov/search/?fo=json&c=6&q="+q),
+    )
+    for label,url in requests:
+        try:
+            data=_research_json(url,fetch=fetch)
+            rows=data.get("pages",[]) if label=="Wikipedia" else data.get("results",[])
+            if not isinstance(rows,list):
+                raise ValueError("Research service provided an invalid result list.")
+            for item in rows[:8]:
+                if not isinstance(item,dict):continue
+                title=str(item.get("title") or "").strip()
+                if not title:continue
+                if label=="Wikipedia":
+                    key=item.get("key") or title.replace(" ","_")
+                    page_url="https://en.wikipedia.org/wiki/"+urllib.parse.quote(str(key),safe="/:_-()")
+                    excerpt=strip_html(str(item.get("excerpt") or item.get("description") or ""))
+                else:
+                    page_url=str(item.get("id") or "")
+                    if not page_url.startswith("https://www.loc.gov/"):
+                        continue
+                    descr=item.get("description") or item.get("subject") or ""
+                    if isinstance(descr,list):descr="; ".join(str(x) for x in descr[:4])
+                    excerpt=strip_html(str(descr))
+                # Search ranking can be poor for historical people. Favor matches.
+                query_terms={x.lower() for x in re.findall(r"[a-zA-Z]{4,}",query)}
+                stop={"about","video","military","history","documentary","the","their",
+                      "with","from","american","story","medal","honor"}
+                query_terms-=stop
+                title_words={x.lower() for x in re.findall(r"[a-zA-Z]{4,}",title)}
+                if query_terms and not query_terms.intersection(title_words):
+                    continue
+                if any(e['url']==page_url for e in sources):
+                    continue
+                sources.append({"title":title[:180],"url":page_url,
+                                "publisher":label,"excerpt":excerpt[:700],
+                                "type":("secondary overview" if label=="Wikipedia" else
+                                        "official collection metadata"),
+                                "status":"RESEARCH LEAD — original page must be checked",
+                                "verified":False})
+                if len(sources)>=10:break
+        except (OSError,TimeoutError,ValueError,TypeError,KeyError,
+                urllib.error.HTTPError,urllib.error.URLError) as exc:
+            warnings.append(label+" temporarily unavailable: "+str(exc)[:150])
+    return {"topic":topic,"query":query,"retrieved_at":now(),
+            "sources":sources,"warnings":warnings,
+            "notice":"AUTOMATED DISCOVERY ONLY. None of these sources verifies any claim. "
+                     "Check primary sources and exact excerpts before approving factual claims."}
+
+
+def research_brief(report:dict)->str:
+    """Human-readable source leads for local Ollama, explicitly untrusted data."""
+    sections=[
+        "AUTOMATIC SOURCE DISCOVERY — ALL CLAIMS STILL REQUIRE HUMAN FACT CHECK.",
+        "Do not treat result summaries as proof. Do not cite a URL without opening it.",
+        "TOPIC: "+str(report.get("topic","")),
+    ]
+    for idx,item in enumerate(report.get("sources",[])[:9],1):
+        sections.append(f"\nSOURCE LEAD {idx} [{item['publisher']}, {item['type']}]: "
+                        f"{item['title']}\nURL: {item['url']}\n"
+                        f"RETRIEVED SUMMARY (UNVERIFIED): {item.get('excerpt','')[:650]}")
+    if not report.get("sources"):
+        sections.append("\nNo external sources returned. Do NOT invent dates, names or numbers.")
+    return "\n".join(sections)[:MAX_NOTES]
+
+
 def research_notes(job:dict)->str:
     file=job.get('notes_file','')
     if not file:return ''
