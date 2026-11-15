@@ -15,12 +15,14 @@ import production_engine as engine
 import update_engine
 
 SOFT_LIGHT=update_engine.load_settings().get('appearance')=='soft_light'
-NAVY='#f2f5f2' if SOFT_LIGHT else '#202a33'
-PANEL='#dfe7e2' if SOFT_LIGHT else '#303d49'
-GOLD='#477669' if SOFT_LIGHT else '#9fc5bc'
-CREAM='#23382f' if SOFT_LIGHT else '#e0e6e8'
-MUTED='#50695f' if SOFT_LIGHT else '#bac7ce'
-HEADING_BG='#b7cbbb' if SOFT_LIGHT else '#425260'
+NAVY='#F1F4F4' if SOFT_LIGHT else '#0C121B'
+PANEL='#FFFFFF' if SOFT_LIGHT else '#182330'
+GOLD='#2F6758' if SOFT_LIGHT else '#D7B47B'
+CREAM='#253640' if SOFT_LIGHT else '#EDF2F4'
+MUTED='#60747C' if SOFT_LIGHT else '#A1B1BD'
+HEADING_BG='#DAE5DF' if SOFT_LIGHT else '#223343'
+ACTIVE_BG='#265247' if SOFT_LIGHT else '#EAC68D'
+ACTIVE_FG='#FFFFFF' if SOFT_LIGHT else '#10202A'
 
 
 def open_text_model_setup(parent,*,on_select=None):
@@ -135,8 +137,8 @@ class ProductionStudio(tk.Toplevel):
     }
     def __init__(self,parent,*,on_load=None,default_voice='kokoro:am_onyx'):
         super().__init__(parent)
-        self.title("The Crow's Nest | Episode Queue")
-        self.geometry('1010x775')
+        self.title("The Crow's Nest | Film Library")
+        self.geometry('1060x800')
         self.minsize(710,500)
         self.configure(bg=NAVY)
         self.on_load=on_load
@@ -157,6 +159,12 @@ class ProductionStudio(tk.Toplevel):
         self.start_immediately=tk.BooleanVar(value=True)
         self.state=tk.StringVar(value='Enter an idea, create an episode, then review it in the editor.')
         style=ttk.Style(self)
+        style.configure('Queue.Primary.TButton',font=('Segoe UI',10,'bold'),
+                        padding=(17,11),background=GOLD,
+                        foreground=ACTIVE_FG,borderwidth=0)
+        style.map('Queue.Primary.TButton',
+                  background=[('active',ACTIVE_BG)],
+                  foreground=[('active',ACTIVE_FG)])
         style.configure('Queue.TNotebook',background=NAVY,borderwidth=0)
         style.configure('Queue.TNotebook.Tab',font=('Segoe UI',11),padding=(20,12),
                         background=PANEL,foreground=CREAM)
@@ -169,12 +177,16 @@ class ProductionStudio(tk.Toplevel):
         style.map('Queue.Treeview',background=[('selected','#48655e')],
                   foreground=[('selected','#ffffff')])
 
-        header=tk.Frame(self,bg=NAVY,padx=22,pady=16)
+        header=tk.Frame(self,bg=NAVY,padx=25,pady=21)
         header.pack(fill='x')
-        tk.Label(header,text='Episode production',bg=NAVY,fg=CREAM,
-                 font=('Segoe UI',22,'bold')).pack(anchor='w')
-        tk.Label(header,text='Create from a prompt  •  Review in the editor  •  Render after fact-check',
-                 bg=NAVY,fg=MUTED,font=('Segoe UI',11)).pack(anchor='w',pady=(3,0))
+        tk.Label(header,text="THE CROW'S NEST   /   PROJECTS",
+                 bg=NAVY,fg=GOLD,font=('Segoe UI',9,'bold')).pack(anchor='w')
+        tk.Label(header,text='Film library & production queue',bg=NAVY,fg=CREAM,
+                 font=('Segoe UI',23,'bold')).pack(anchor='w',pady=(6,5))
+        tk.Label(header,text='Return to your drafts, compare formats and review sources. '
+                 'Advanced creation and integrations are available on separate pages.',
+                 bg=NAVY,fg=MUTED,font=('Segoe UI',11),
+                 wraplength=930,justify='left').pack(anchor='w')
         self.tabs=ttk.Notebook(self,style='Queue.TNotebook')
         self.tabs.pack(fill='both',expand=True,padx=18,pady=(0,10))
 
@@ -198,26 +210,26 @@ class ProductionStudio(tk.Toplevel):
             self._page_scroll_canvases.append(canvas)
             self._page_scroll_containers.append(outer)
             return content
-        create=page('1. Create episode')
-        queue=page('2. Production queue')
-        inbox=page('3. INTEGRATIONS')
+        create=page('ADVANCED CREATE')
+        queue=page('FILM LIBRARY')
+        inbox=page('INTEGRATIONS')
         self.queue_page=queue._scroll_outer
-        self._heading(create,'One topic. A full video and punchy short versions.',15)
-        tk.Label(create,text='Include the topic, angle, key events, and style. '
-                 'The generated script will still require source review.',
+        self._heading(create,'Advanced production brief',16)
+        tk.Label(create,text='The main window is the easiest way to start. Use this page '
+                 'when you need special narrator, source-note or model settings.',
                  bg=NAVY,fg=MUTED,wraplength=850,justify='left',
                  font=('Segoe UI',11)).pack(anchor='w',pady=(0,10))
         self.prompt=scrolledtext.ScrolledText(create,height=7,wrap='word',
                   bg=PANEL,fg=CREAM,insertbackground=CREAM,font=('Segoe UI',12),
                   relief='flat',padx=12,pady=11)
         self.prompt.pack(fill='both',expand=True,pady=(0,15))
-        self.prompt.insert('1.0',"Explore the history of the crow's nest lookout, from sailing ships to modern naval operations. Explain how responsibilities and equipment changed without inventing events or quotations.")
+        tk.Label(create,text='Describe a specific historical topic or military story angle.',
+                 bg=NAVY,fg=MUTED,font=('Segoe UI',10)).pack(anchor='w',pady=(0,10))
         basic=tk.Frame(create,bg=NAVY);basic.pack(fill='x',pady=(0,15))
         self._field(basic,'Length (minutes)',self.minutes,values=[1,2,3,5,8,10,12,15,20,30],width=9)
         self._field(basic,'Visual style',self.visual_style,
                     values=list(self.STYLE_CHOICES),width=25)
-        ttk.Button(create,text="Check / install text model",
-                   command=self.model_setup).pack(anchor="w",pady=(0,13))
+
         deliver=tk.Frame(create,bg=PANEL,padx=14,pady=12)
         deliver.pack(fill='x',pady=(0,14))
         tk.Label(deliver,text='CREATE FROM THE SAME RESEARCH',bg=PANEL,fg=CREAM,
@@ -257,14 +269,14 @@ class ProductionStudio(tk.Toplevel):
              variable=self.start_immediately,bg=NAVY,fg=CREAM,selectcolor=PANEL,
              activebackground=NAVY,activeforeground=CREAM).pack(anchor='w',pady=(0,8))
         controls=tk.Frame(create,bg=NAVY);controls.pack(fill='x',pady=(8,3))
-        self.add_btn=ttk.Button(controls,text='Create episode',command=self.add_job)
+        self.add_btn=ttk.Button(controls,text='RESEARCH & BUILD',style='Queue.Primary.TButton',command=self.add_job)
         self.add_btn.pack(side='left',padx=(0,11))
         ttk.Button(controls,text='View production queue',
                    command=lambda:self.tabs.select(self.queue_page)).pack(side='left')
         tk.Label(create,text='New episodes are unverified drafts until you review their evidence.',
                  bg=NAVY,fg=MUTED,font=('Segoe UI',10)).pack(anchor='w',pady=(8,0))
 
-        self._heading(queue,'Your episodes — review every output',15)
+        self._heading(queue,'Your documentary projects',16)
         select_row=tk.Frame(queue,bg=NAVY);select_row.pack(fill='x',pady=(0,10))
         tk.Label(select_row,text='Version to edit:',bg=NAVY,fg=CREAM,
                  font=('Segoe UI',10,'bold')).pack(side='left',padx=(0,12))
@@ -290,7 +302,7 @@ class ProductionStudio(tk.Toplevel):
         self.list.pack(side='left',fill='both',expand=True)
         scroll.pack(side='left',fill='y')
         row=tk.Frame(queue,bg=NAVY);row.pack(fill='x',pady=(12,8))
-        ttk.Button(row,text='Open selected draft in editor',
+        ttk.Button(row,text='OPEN SELECTED SCRIPT',style='Queue.Primary.TButton',
                    command=self.open_draft).pack(side='left',padx=(0,8))
         self.run_btn=ttk.Button(row,text='Run pending',command=self.run_queue)
         self.run_btn.pack(side='left',padx=(0,8))
@@ -311,6 +323,13 @@ class ProductionStudio(tk.Toplevel):
         tk.Label(footer,textvariable=self.state,anchor='w',wraplength=900,
                  justify='left',bg=PANEL,fg=CREAM,
                  font=('Segoe UI',10)).pack(fill='x')
+        self._heading(inbox,'Local AI and connected services',16)
+        tk.Label(inbox,text='The production screen only asks for models when one is missing. '
+                 'All installations and integrations live here.',
+                 bg=NAVY,fg=MUTED,font=('Segoe UI',11),
+                 wraplength=850,justify='left').pack(anchor='w',pady=(0,12))
+        ttk.Button(inbox,text='Find / install local writing model',
+                   command=self.model_setup).pack(anchor='w',pady=(0,22))
         self._heading(inbox,'Private ChatGPT job inbox',14)
         tk.Label(inbox,text='ChatGPT can place private episode requests in your Drive job inbox. '
                  'Install Google Drive for desktop, then choose its locally synced folder here once. '
