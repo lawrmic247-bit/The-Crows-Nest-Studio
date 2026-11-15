@@ -1,3 +1,22 @@
+# THE CROW'S NEST STUDIO 4.2 — CHATGPT INBOX AND GUIDED DOCUMENTARY PRODUCTION
+
+## Easy workflow
+
+1. Open **Write → Open prompt production queue**. Type the subject, choose **Length**, **Video shape**, and **Visual style**. Click **Create episode**. Auto-draft is enabled by default, and source review is still required.
+2. Or use **3. ChatGPT inbox** in the production window. Install **Google Drive for desktop** and sync the private `07 - Studio Job Inbox` folder in The Crow's Nest Drive. Click **Choose folder** once and select its local Windows path. Studio scans that folder every 30 seconds **while the production window remains open**, imports new `crowsnest.job.v1` JSON jobs, and can draft them automatically. Your personal Google sign-in is handled by Drive desktop; Studio itself never asks for or stores a Google password/token.
+3. ChatGPT can submit either a topic-only request or a prepared narration/scene script in the job JSON. Prepared scripts bypass Ollama but still require all normal fact checks. Topic-only requests require a running local Ollama model. The production window lists completed drafts; select **Open selected draft in editor** to review or edit.
+4. In **Narrate**, choose a voice. Preview it, install the model once if needed, generate narration, and use Play/Stop. **Edit pronunciation guide** sets private word-by-word corrections for difficult names. Years such as 1967 and month-name dates are spoken naturally; subtitles keep the original written dates.
+5. In **Review & render**, verify the historical claims and media licenses, choose 9:16 or 16:9, then render. In **Preview & publish**, play the complete MP4 and explicitly approve the finished video.
+6. **Continue to Buffer upload** opens your export folder and Buffer's browser composer. You manually attach the final MP4, select TikTok/YouTube and click publish there. **The desktop app does not upload or post on your behalf.** Buffer's API requires a stable publicly hosted media URL and is not used by this local-only workflow.
+
+**Visual style choices:** `archival` uses reusable historical photos where found; `motion` gives those real still photos restrained cinematic movement; `hybrid` mixes motion-treated photos with branded title cards. **These settings do not generate photorealistic AI battle footage.** Actual photographs are discovered from Wikimedia Commons only when available, and they remain unverified until the user checks relevance, provenance, and license. For generative reenactments, footage must currently be produced in another tool and imported as video files.
+
+**Private ChatGPT inbox:** The repository is public code, but job requests and voice models should stay in private Google Drive/local folders. Do not commit personal clips or scripts to GitHub. The private Drive inbox used by ChatGPT is: https://drive.google.com/drive/folders/1X_-ZSLRTvOt4KFFSEoS_ml-9t4O8p05H
+
+**Limitations:** The video preview launches FFplay or the system's MP4 player, not an embedded timeline editor. TTS pronunciations remain voice/model-dependent; the guide is a correction tool rather than a universal multilingual phoneme engine. Media searches can miss images. Automated tests verify Python behavior and headless GUI opening, not real Windows audio outputs or third-party publishing success.
+
+---
+
 # THE CROW'S NEST STUDIO 3.0
 
 ## Studio 3.0 — Prompt Drafts & Personal Voice Studio
