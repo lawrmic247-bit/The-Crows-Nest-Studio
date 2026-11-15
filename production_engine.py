@@ -548,7 +548,7 @@ def _local_reenactments(job:dict,scenes:list[dict],progress=None)->int:
     if not workflow:
         if progress:progress('AI video not configured. Using archival media/title cards instead.')
         return 0
-    from local_video import LocalVideoError,generate_clip,build_reenactment_prompt,status
+    from studio import LocalVideoError,generate_clip,build_reenactment_prompt,status
     try:
         status()
     except LocalVideoError as exc:
