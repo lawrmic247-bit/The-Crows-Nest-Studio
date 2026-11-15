@@ -2,13 +2,20 @@
 from __future__ import annotations
 import tkinter as tk
 import webbrowser
+import update_engine
 from pathlib import Path
 from tkinter import messagebox, scrolledtext, ttk
 from fact_checker import (mark_claim, report_markdown, research_url, safe_url,
                           save_report, source_tier, status_summary, sync_report,
                           wiki_candidates)
 
-DARK='#202a33';PANEL='#303d49';GOLD='#9fc5bc';LIGHT='#e0e6e8';GREY='#bac7ce'
+SOFT_LIGHT=update_engine.load_settings().get('appearance')=='soft_light'
+DARK='#f2f5f2' if SOFT_LIGHT else '#202a33'
+PANEL='#dfe7e2' if SOFT_LIGHT else '#303d49'
+GOLD='#477669' if SOFT_LIGHT else '#9fc5bc'
+LIGHT='#23382f' if SOFT_LIGHT else '#e0e6e8'
+GREY='#50695f' if SOFT_LIGHT else '#bac7ce'
+HEADING_BG='#b7cbbb' if SOFT_LIGHT else '#425260'
 
 class FactCheckDialog(tk.Toplevel):
     def __init__(self,parent,slug:str,title:str,script:str):
@@ -20,7 +27,7 @@ class FactCheckDialog(tk.Toplevel):
         style=ttk.Style(self)
         style.configure('Evidence.Treeview',background=PANEL,fieldbackground=PANEL,
                         foreground=LIGHT,font=('Segoe UI',10),rowheight=31)
-        style.configure('Evidence.Treeview.Heading',background='#425260',
+        style.configure('Evidence.Treeview.Heading',background=HEADING_BG,
                         foreground=LIGHT,font=('Segoe UI',11,'bold'))
         style.map('Evidence.Treeview',background=[('selected','#48655e')],
                   foreground=[('selected','#ffffff')])
