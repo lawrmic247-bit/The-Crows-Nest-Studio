@@ -54,6 +54,31 @@ jobs:
           app.close()
           print('Desktop navigation, Voice Studio, queue, and review windows opened.')
           PY
+      - name: Smoke test low-glare and soft-light user settings
+        run: |
+          export LOCALAPPDATA="$RUNNER_TEMP/crows_light"
+          mkdir -p "$LOCALAPPDATA/TheCrowsNestStudio"
+          printf '{"appearance":"soft_light","ui_scale":1.15}' > "$LOCALAPPDATA/TheCrowsNestStudio/settings.json"
+          xvfb-run -a python - <<'PY'
+          import gui,production_ui,voice_studio_ui,fact_checker_ui
+          assert gui.SOFT_LIGHT and production_ui.SOFT_LIGHT
+          assert voice_studio_ui.SOFT_LIGHT and fact_checker_ui.SOFT_LIGHT
+          app=gui.App()
+          assert len(app.tabs.tabs())==5
+          window=production_ui.ProductionStudio(app)
+          assert len(window.tabs.tabs())==3
+          assert window.want_full.get() and window.want_shorts.get() and window.want_tiktok.get()
+          assert window.STYLE_CHOICES['Animated realism (local AI)']=='ai_reenactment'
+          window.destroy()
+          voice=voice_studio_ui.VoiceStudio(app)
+          voice.close()
+          fact=fact_checker_ui.FactCheckDialog(
+              app,'ci-light-test','Source Test',
+              'A medical professional helped the wounded during a naval operation.')
+          fact.destroy()
+          app.close()
+          print('Soft-light theme, font scaling and all creation checkboxes verified.')
+          PY
       - name: Build verified code update
         run: python build_release.py
       - name: Build self-contained source installer ZIP
