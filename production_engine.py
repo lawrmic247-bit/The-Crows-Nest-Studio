@@ -111,7 +111,7 @@ def import_chatgpt_job(path: Path, *, source_folder: Path | None=None) -> dict:
                    voice=raw.get('voice','kokoro:am_onyx'),
                    visual_style=raw.get('visual_style','archival'),
                    auto_media=raw.get('auto_media',True),
-                   deliverables=raw.get('deliverables'))
+                   deliverables=raw.get('deliverables',['full','shorts','tiktok']))
     if notes.strip():
         notes_path=QUEUE/(job['id']+'_notes.txt')
         notes_path.write_text(notes,encoding='utf-8')
