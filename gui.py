@@ -8,6 +8,7 @@ from fact_checker import require_clearance, status_summary, sync_report
 from narration import voice_slug, AudioPlayer, PlaybackError, find_ffplay, PRONUNCIATION_FILE, DEFAULT_PRONUNCIATIONS, load_pronunciations
 from voice_profiles import list_profiles
 from voice_studio_ui import VoiceStudio
+import production_engine as production_engine
 from production_ui import ProductionStudio
 from fact_checker_ui import FactCheckDialog
 import update_engine
@@ -55,6 +56,9 @@ class App(tk.Tk):
         self.video_preview_process=None
         self.last_render=None
         self.busy=False
+        self.production_window=None
+        self.inbox_busy=False
+        self.pending_chat_job=None
         self.last_preview: Path | None = None
         self.loaded_manifest_path: Path | None = None
         self.loaded_production_job: str | None = None
@@ -116,6 +120,9 @@ class App(tk.Tk):
                    command=self.open_production_studio).pack(side='left',padx=(0,10))
         ttk.Button(prompt_bar,text='Quick AI draft',
                    command=self.prompt_draft).pack(side='left')
+        self.chat_ready_button=ttk.Button(prompt_bar,text='Review ChatGPT draft',
+                   state='disabled',command=self.open_chat_ready)
+        self.chat_ready_button.pack(side='left',padx=(10,0))
         self._label(create,'Episode title')
         self.title_var=tk.StringVar(value="The History of the Crow's Nest")
         ttk.Entry(create,textvariable=self.title_var,font=('Segoe UI',12)).pack(
@@ -273,6 +280,7 @@ class App(tk.Tk):
         self._set_log('Studio '+update_engine.VERSION+' ready. Choose a step above.\n')
         self.after(1800,self.auto_update_check)
         self.after(150,self.poll)
+        self.after(10000,self.poll_chat_inbox)
         self.protocol('WM_DELETE_WINDOW',self.close)
 
     def mouse_scroll(self, event):
@@ -477,7 +485,75 @@ class App(tk.Tk):
             messagebox.showerror('Buffer handoff error',str(exc),parent=self)
 
     def open_production_studio(self):
-        ProductionStudio(self,on_load=self.load_production_draft,default_voice=self._voice())
+        if self.production_window is not None and self.production_window.winfo_exists():
+            self.production_window.lift()
+            self.production_window.focus_set()
+            return
+        self.production_window=ProductionStudio(
+            self,on_load=self.load_production_draft,default_voice=self._voice())
+
+    def open_chat_ready(self):
+        if not self.pending_chat_job:
+            self.status.set('No imported ChatGPT draft is ready.')
+            return
+        try:
+            job=production_engine.get_job(self.pending_chat_job)
+            if job['status']!='awaiting_review' or not job.get('manifest'):
+                raise ValueError('The imported draft is not ready for review.')
+            self.load_production_draft(Path(job['manifest']),job['id'])
+            self.chat_ready_button.configure(state='disabled')
+            self.pending_chat_job=None
+        except (OSError,ValueError,KeyError) as exc:
+            messagebox.showerror('Cannot open imported draft',str(exc),parent=self)
+
+    def poll_chat_inbox(self):
+        """Import when the main app is open, without auto-clearing a user's edits."""
+        try:
+            self._poll_chat_inbox_once()
+        except (OSError,ValueError,TypeError) as exc:
+            self._set_log('ChatGPT inbox check: '+str(exc)+'\n')
+        if self.winfo_exists():
+            self.after(45000,self.poll_chat_inbox)
+
+    def _poll_chat_inbox_once(self):
+        if self.inbox_busy:
+            return
+        if self.production_window is not None and self.production_window.winfo_exists():
+            # The dedicated production window owns inbox polling while open.
+            return
+        folder_name=update_engine.load_settings().get('chatgpt_inbox','')
+        if not folder_name or not Path(folder_name).is_dir():
+            return
+        folder=Path(folder_name).resolve()
+        existing={job['id'] for job in production_engine.list_jobs()}
+        new=[]
+        for file in sorted(folder.glob('*.json'))[:60]:
+            try:
+                job=production_engine.import_chatgpt_job(file,source_folder=folder)
+                if job['id'] not in existing:
+                    existing.add(job['id'])
+                    new.append(job['id'])
+            except (OSError,ValueError,TypeError,KeyError):
+                # An incomplete sync or invalid request is not trusted or executed.
+                continue
+        if not new:
+            awaiting=[j for j in production_engine.list_jobs()
+                      if j.get('source_file') and j['status']=='awaiting_review']
+            if awaiting and not self.pending_chat_job:
+                self.pipe.put(('chat_ready',awaiting[0]['id']))
+            return
+        self.inbox_busy=True
+        self.status.set('New ChatGPT episode request received. Preparing an unverified draft...')
+        def worker():
+            for job_id in new:
+                try:
+                    job=production_engine.run_job(job_id)
+                    if job['status']=='awaiting_review':
+                        self.pipe.put(('chat_ready',job_id))
+                except Exception as exc:
+                    self.pipe.put(('update_log','ChatGPT draft could not run: '+str(exc)))
+            self.pipe.put(('chat_inbox_idle',True))
+        threading.Thread(target=worker,daemon=True).start()
 
     def load_production_draft(self, path:Path, job_id:str):
         data=json.loads(Path(path).read_text(encoding='utf-8'))
@@ -752,6 +828,12 @@ class App(tk.Tk):
                         self.last_preview=Path(value)
                     elif kind=='rendered':
                         self._set_rendered(Path(value))
+                    elif kind=='chat_ready':
+                        self.pending_chat_job=value
+                        self.chat_ready_button.configure(state='normal')
+                        self.status.set('ChatGPT draft prepared. Click Review ChatGPT draft in Write.')
+                    elif kind=='chat_inbox_idle':
+                        self.inbox_busy=False
                     elif kind=='play':
                         self._play_audio(Path(value))
                     elif kind=='done':
