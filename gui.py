@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """The Crow's Nest Studio — desktop documentary editor, v4.0."""
 from __future__ import annotations
-import json, os, queue, re, subprocess, sys, threading, tkinter as tk
+import json, os, queue, re, subprocess, sys, threading, webbrowser, tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 from fact_checker import require_clearance, status_summary, sync_report
-from narration import voice_slug, AudioPlayer, PlaybackError
+from narration import voice_slug, AudioPlayer, PlaybackError, find_ffplay, PRONUNCIATION_FILE, DEFAULT_PRONUNCIATIONS, load_pronunciations
 from voice_profiles import list_profiles
 from voice_studio_ui import VoiceStudio
 from production_ui import ProductionStudio
@@ -52,6 +52,8 @@ class App(tk.Tk):
                 pass
         self.pipe: queue.Queue = queue.Queue()
         self.player=AudioPlayer()
+        self.video_preview_process=None
+        self.last_render=None
         self.busy=False
         self.last_preview: Path | None = None
         self.loaded_manifest_path: Path | None = None
@@ -96,10 +98,12 @@ class App(tk.Tk):
         create=page('1. Write')
         voice=page('2. Narrate')
         export=page('3. Review & render')
-        activity=page('4. Activity & settings')
+        publish=page('4. Preview & publish')
+        activity=page('5. Activity & settings')
         self.write_page=create
         self.voice_page=voice
         self.export_page=export
+        self.publish_page=publish
         self.activity_page=activity
 
         self._label(create,'Start with a topic or your own script')
@@ -161,6 +165,8 @@ class App(tk.Tk):
         self.voice_install_button.pack(side='left',padx=(0,10))
         ttk.Button(actions,text='My voices: record / clean / clone',
                    command=self.open_voice_studio).pack(side='left')
+        ttk.Button(voice,text='Edit pronunciation guide',
+                   command=self.edit_pronunciations).pack(anchor='w',pady=(0,3))
         self.generate_button=tk.Button(voice,text='Generate full narration',
                          command=self.generate_narration,bg=GOLD,fg=INK,
                          activebackground='#bcd8cf',activeforeground=INK,relief='flat',
@@ -212,6 +218,36 @@ class App(tk.Tk):
         self.render_button.pack(side='left',padx=(0,14))
         ttk.Button(row,text='Open exports folder',
                    command=self.open_exports).pack(side='left')
+
+        self._label(publish,'Review the complete video before publishing')
+        tk.Label(publish,text='Preview the finished MP4 with sound. Nothing is posted automatically. '
+                 'When you approve it, Studio will open Buffer and your export folder '
+                 'so you can attach the file and choose your channels.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=900,
+                 justify='left').pack(anchor='w',pady=(3,20))
+        self.rendered_label=tk.StringVar(value='No finished video selected. Render a documentary or choose an MP4.')
+        tk.Label(publish,textvariable=self.rendered_label,bg=PANEL,fg=CREAM,
+                 font=('Segoe UI',11),justify='left',wraplength=880,
+                 padx=12,pady=13).pack(fill='x',pady=(0,16))
+        actions=tk.Frame(publish,bg=INK);actions.pack(fill='x',pady=(0,19))
+        ttk.Button(actions,text='▶ Preview finished video',command=self.preview_video).pack(
+                side='left',padx=(0,11))
+        ttk.Button(actions,text='Select an existing MP4',command=self.select_rendered_video).pack(
+                side='left',padx=(0,11))
+        ttk.Button(actions,text='Open export folder',command=self.open_exports).pack(side='left')
+        self.publish_reviewed=tk.BooleanVar(value=False)
+        ttk.Checkbutton(publish,text='I watched this complete video and approve the final upload',
+                        variable=self.publish_reviewed).pack(anchor='w',pady=(0,22))
+        self.buffer_button=tk.Button(publish,text='Continue to Buffer upload',
+                         command=self.open_buffer_upload,bg=GOLD,fg=INK,
+                         activebackground='#bcd8cf',activeforeground=INK,relief='flat',
+                         font=('Segoe UI',12,'bold'),padx=22,pady=13,cursor='hand2')
+        self.buffer_button.pack(anchor='w')
+        tk.Label(publish,text='Buffer currently requires a publicly hosted video URL for its API. '
+                 'This handoff opens its browser composer and your MP4 folder; '
+                 'you attach the file and select TikTok or YouTube there.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=900,
+                 justify='left').pack(anchor='w',pady=(18,0))
 
         self._label(activity,'Activity log and system maintenance')
         tk.Label(activity,text='Progress, model-installation output, and error messages appear here. '
@@ -332,6 +368,114 @@ class App(tk.Tk):
         path.write_text(json.dumps(obj,indent=2,ensure_ascii=False),encoding='utf-8')
         return path
 
+    def edit_pronunciations(self):
+        """Edit local pronunciation rules without altering historical script text."""
+        top=tk.Toplevel(self)
+        top.title("Narrator pronunciation guide")
+        top.geometry('710x570')
+        top.minsize(530,450)
+        top.configure(bg=INK)
+        tk.Label(top,text='How should the narrator say these words?',
+                 bg=INK,fg=CREAM,font=('Segoe UI',16,'bold')).pack(
+                    anchor='w',padx=19,pady=(18,7))
+        tk.Label(top,text='Edit the JSON pairs below. The left side matches written text; '
+                 'the right side is how the narrator should speak it. '
+                 'Dates and 4-digit years are corrected automatically. '
+                 'The original script and captions do not change.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=650,
+                 justify='left').pack(fill='x',padx=19,pady=(0,15))
+        data=load_pronunciations()
+        editor=scrolledtext.ScrolledText(top,font=('Consolas',11),bg=PANEL,fg=CREAM,
+                       insertbackground=CREAM,wrap='none',padx=13,pady=12)
+        editor.pack(fill='both',expand=True,padx=19,pady=(0,13))
+        editor.insert('1.0',json.dumps(data,indent=2,ensure_ascii=False))
+        def save():
+            try:
+                rules=json.loads(editor.get('1.0','end'))
+                if not isinstance(rules,dict) or len(rules)>120:
+                    raise ValueError('Use a JSON object with no more than 120 entries.')
+                for key,value in rules.items():
+                    if not isinstance(key,str) or not isinstance(value,str):
+                        raise ValueError('All rules must be written text.')
+                    if not (1<=len(key.strip())<=100 and 1<=len(value.strip())<=150):
+                        raise ValueError('Rules cannot be blank or excessively long.')
+                PRONUNCIATION_FILE.parent.mkdir(parents=True,exist_ok=True)
+                tmp=PRONUNCIATION_FILE.with_suffix('.tmp')
+                tmp.write_text(json.dumps(rules,ensure_ascii=False,indent=2),
+                               encoding='utf-8')
+                tmp.replace(PRONUNCIATION_FILE)
+                self.last_preview=None
+                self.status.set('Saved pronunciation guide. Regenerate narration to hear changes.')
+                top.destroy()
+            except (ValueError,OSError) as exc:
+                messagebox.showerror('Invalid pronunciation guide',str(exc),parent=top)
+        row=tk.Frame(top,bg=INK);row.pack(fill='x',padx=19,pady=(0,14))
+        ttk.Button(row,text='Save pronunciation guide',command=save).pack(side='left')
+        ttk.Button(row,text='Cancel',command=top.destroy).pack(side='left',padx=(10,0))
+        top.transient(self)
+
+    def _video_file(self):
+        path=self.last_render
+        if path is None or not Path(path).is_file():
+            messagebox.showwarning('No rendered MP4',
+                'Render your video first or choose an existing export.',parent=self)
+            return None
+        return Path(path)
+
+    def _set_rendered(self,path):
+        path=Path(path)
+        self.last_render=path
+        self.publish_reviewed.set(False)
+        self.rendered_label.set('Ready to preview: '+str(path))
+        self.tabs.select(self.publish_page)
+
+    def select_rendered_video(self):
+        path=filedialog.askopenfilename(parent=self,
+              initialdir=str(ROOT/'exports'),title='Select your completed Crow Nest MP4',
+              filetypes=[('MP4 video','*.mp4')])
+        if path:self._set_rendered(path)
+
+    def preview_video(self):
+        path=self._video_file()
+        if not path:return
+        if self.video_preview_process is not None:
+            try:
+                if self.video_preview_process.poll() is None:self.video_preview_process.terminate()
+            except OSError:pass
+        executable=find_ffplay()
+        if executable:
+            try:
+                self.video_preview_process=subprocess.Popen(
+                    [executable,'-autoexit','-hide_banner','-loglevel','error',
+                     '-window_title',"The Crow's Nest - video preview",str(path)],
+                    stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL)
+                self.status.set('Video preview open. Watch the whole MP4 before approval.')
+                return
+            except OSError as exc:
+                self._set_log('FFplay video preview unavailable: '+str(exc)+'\n')
+        self._open(path)
+
+    def open_buffer_upload(self):
+        path=self._video_file()
+        if not path:return
+        if not self.publish_reviewed.get():
+            messagebox.showwarning('Watch first',
+                'Preview the complete MP4 and check the approval box before continuing.',parent=self)
+            return
+        yes=messagebox.askyesno('Hand off to Buffer',
+              'Open Buffer and this MP4 folder for manual attachment and final channel selection? '
+              'This does NOT publish anything yet.',parent=self)
+        if not yes:return
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(self.title_var.get().strip())
+            self._open(path.parent)
+            webbrowser.open('https://publish.buffer.com/')
+            self.status.set('Buffer opened. Attach your MP4, choose the channels, then publish in Buffer.')
+        except (OSError,tk.TclError) as exc:
+            messagebox.showerror('Buffer handoff error',str(exc),parent=self)
+
     def open_production_studio(self):
         ProductionStudio(self,on_load=self.load_production_draft,default_voice=self._voice())
 
@@ -403,7 +547,7 @@ class App(tk.Tk):
         voice = self._voice()
         speed = self._speed()
         suffix = f'{int(speed * 100):03d}'
-        preview = ROOT / 'assets' / 'narration' / 'voice_previews' / f'{voice_slug(voice)}_{suffix}.wav'
+        preview = ROOT / 'assets' / 'narration' / 'voice_previews' / f'{voice_slug(voice)}_{suffix}_pron2.wav'
         if preview.is_file() and preview.stat().st_size > 44:
             self._play_audio(preview)
             return
@@ -472,6 +616,10 @@ class App(tk.Tk):
 
     def close(self):
         self.player.stop()
+        if self.video_preview_process is not None:
+            try:
+                if self.video_preview_process.poll() is None:self.video_preview_process.terminate()
+            except OSError:pass
         self.destroy()
 
     def render(self):
@@ -491,6 +639,7 @@ class App(tk.Tk):
             try:require_clearance(doc['slug'],script)
             except (ValueError, OSError) as error:
                 messagebox.showwarning('FACT CHECK REQUIRED',str(error));return
+        doc_slug=json.loads(manifest.read_text(encoding='utf-8'))['slug']
         def work():
             if not demo:
                 doc=json.loads(manifest.read_text(encoding='utf-8'))
@@ -501,7 +650,9 @@ class App(tk.Tk):
                 if demo:
                     cmd+=['--silent-demo']
                 self._command(cmd)
-            self.pipe.put(('done',f'Rendered {len(formats)} MP4 format(s). Click Open exports.'))
+            outputs=[str(ROOT/'exports'/f"{doc_slug}_{fmt}.mp4") for fmt in formats]
+            self.pipe.put(('rendered',outputs[-1]))
+            self.pipe.put(('done',f'Rendered {len(formats)} MP4 format(s). Open Preview & publish to inspect.'))
         self._run_task('Rendering MP4 video...',work)
 
     def fact_check(self):
@@ -599,6 +750,8 @@ class App(tk.Tk):
                         self.tabs.select(self.write_page)
                     elif kind=='preview':
                         self.last_preview=Path(value)
+                    elif kind=='rendered':
+                        self._set_rendered(Path(value))
                     elif kind=='play':
                         self._play_audio(Path(value))
                     elif kind=='done':
