@@ -224,6 +224,86 @@ jobs:
           app.close()
           print('Film brief, automatic model setup, navigation, output choice and fresh-project reset passed.')
           PY
+      - name: Verify strict step gates and embedded evidence desk
+        run: |
+          xvfb-run -a python - <<'PY'
+          import json,tempfile
+          from pathlib import Path
+          from unittest.mock import patch
+          from gui import App
+          app=App()
+          app.update()
+          with tempfile.TemporaryDirectory() as tmp:
+              base=Path(tmp)
+              app.title_var.set('Wizard CI Test')
+              app.script.insert('1.0',
+                  'On May 16, 1968, a Navy corpsman helped wounded Marines in Vietnam.')
+              app._unlock(1)
+              app._go(1)
+              app.fact_check()
+              assert app.fact_panel.report is not None
+              assert app.fact_panel.winfo_toplevel() is app
+              assert not app.verify_script_and_continue(), (
+                  'Unverified facts must block narration')
+              assert app.tabs.index(app.tabs.select())==1
+              with patch('gui.require_clearance',return_value=base/'evidence.json'):
+                  assert app.verify_script_and_continue()
+              assert app.tabs.index(app.tabs.select())==2
+              preview=base/'narration.wav'
+              preview.write_bytes(b'RIFF'+b'\0'*96)
+              app.last_preview=preview
+              app.voice_approved.set(True)
+              app.played_full_narration=False
+              assert not app.approve_voice_and_continue()
+              assert app.tabs.index(app.tabs.select())==2
+              app.played_full_narration=True
+              manuscript=base/'film.json'
+              doc={'slug':'wizard-ci','title':'Wizard CI',
+                   'visual_style':'archival','approved':False,
+                   'scenes':[{'heading':'Opening',
+                              'narration':'A researched military history story.',
+                              'audio':str(preview)}]}
+              manuscript.write_text(json.dumps(doc),encoding='utf-8')
+              with patch.object(app,'_manifest',return_value=manuscript):
+                  assert app.approve_voice_and_continue()
+              assert app.tabs.index(app.tabs.select())==3
+              app.review.set(False)
+              with patch.object(app,'_manifest',return_value=manuscript):
+                  with patch.object(app,'_run_task') as render:
+                      app.render()
+                      render.assert_not_called()
+              assert 'FOOTAGE RIGHTS' in app.blocker_message.get()
+              # GPU generation must take place before post-generation rights approval.
+              doc.update(visual_style='ai_reenactment',
+                         production_job='ci-job',
+                         ai_visuals_prepared=False)
+              manuscript.write_text(json.dumps(doc),encoding='utf-8')
+              app.ai_visuals_prepared=False
+              app.fact_review_complete=True
+              image=base/'scene.mp4'
+              def fake_generation(job,scenes,progress=None):
+                  image.write_bytes(b'fake clip for test')
+                  scenes[0]['visual']=str(image)
+                  scenes[0]['visual_provenance']='AI-generated illustration'
+                  return 1
+              with patch('gui.require_clearance',return_value=base/'evidence.json'):
+                  with patch('production_engine.get_job',return_value={
+                             'id':'ci-job','prompt':'A sourced history topic'}):
+                      with patch('production_engine.MEDIA_DIR',base/'media'):
+                          with patch('production_engine._local_reenactments',
+                                     side_effect=fake_generation):
+                              with patch.object(app,'_run_task',
+                                                side_effect=lambda label,fn:fn()):
+                                  app.prepare_ai_visuals(manuscript,doc)
+              app.poll()
+              result=json.loads(manuscript.read_text(encoding='utf-8'))
+              assert result['ai_visuals_prepared'] is True
+              assert result['approved'] is False
+              assert app.review.get() is False
+              assert app.ai_visuals_prepared is True
+          app.close()
+          print('Model/claim/voice/media-rights/AI-asset ordering all enforced.')
+          PY
       - name: Verify queue to editor handoff without window clutter
         run: |
           xvfb-run -a python - <<'PY'
