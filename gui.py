@@ -6,6 +6,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 from fact_checker import require_clearance, status_summary, sync_report
 from narration import voice_slug
+from audio_playback import AudioPlayer, PlaybackError
 from voice_profiles import list_profiles
 from voice_studio_ui import VoiceStudio
 from production_ui import ProductionStudio
@@ -24,11 +25,11 @@ VOICE_OPTIONS = {
     'Piper Lessac — basic (legacy)': 'en_US-lessac-medium',
 }
 
-GOLD = '#e8ba65'
-INK = '#071523'
-PANEL = '#10243b'
-CREAM = '#f0e5ca'
-MUTED = '#a6b7ca'
+GOLD = '#9fc5bc'
+INK = '#202a33'
+PANEL = '#303d49'
+CREAM = '#e0e6e8'
+MUTED = '#bac7ce'
 
 
 def python_bin() -> str:
@@ -41,9 +42,9 @@ def python_bin() -> str:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("THE CROW'S NEST — STUDIO v4.0")
-        self.geometry('1160x850')
-        self.minsize(760,570)
+        self.title("The Crow's Nest | Studio " + update_engine.VERSION)
+        self.geometry('1090x785')
+        self.minsize(790,605)
         self.configure(bg=INK)
         if sys.platform == 'win32':
             try:
@@ -51,159 +52,197 @@ class App(tk.Tk):
             except (tk.TclError, OSError):
                 pass
         self.pipe: queue.Queue = queue.Queue()
-        self.busy = False
+        self.player=AudioPlayer()
+        self.busy=False
         self.last_preview: Path | None = None
         self.loaded_manifest_path: Path | None = None
         self.loaded_production_job: str | None = None
-        style = ttk.Style(self)
+
+        style=ttk.Style(self)
         style.theme_use('clam')
-        style.configure('N.TFrame', background=INK)
-        style.configure('N.TLabel', background=INK, foreground=CREAM, font=('Segoe UI', 10))
-        style.configure('N.TCheckbutton', background=INK, foreground=CREAM, font=('Segoe UI', 10))
-        style.configure('N.TButton', font=('Segoe UI', 10), padding=(12, 7))
-        style.configure('N.TCombobox', font=('Segoe UI', 10))
+        style.configure('TButton',font=('Segoe UI',10),padding=(12,9),
+                        foreground=CREAM,background=PANEL,borderwidth=0)
+        style.map('TButton',background=[('active','#45616a'),('disabled',PANEL)],
+                  foreground=[('disabled','#8c9ba4')])
+        style.configure('TEntry',font=('Segoe UI',11),fieldbackground='#374653',
+                        foreground=CREAM,insertcolor=CREAM,padding=(9,8),borderwidth=1)
+        style.configure('TCombobox',font=('Segoe UI',11),fieldbackground='#374653',
+                        foreground=CREAM,background=PANEL,padding=6)
+        style.map('TCombobox',fieldbackground=[('readonly','#374653')],
+                  foreground=[('readonly',CREAM)])
+        style.configure('TCheckbutton',font=('Segoe UI',11),background=INK,foreground=CREAM)
+        style.map('TCheckbutton',background=[('active',INK)],
+                  foreground=[('active',CREAM)])
+        style.configure('Studio.TNotebook',background=INK,borderwidth=0)
+        style.configure('Studio.TNotebook.Tab',font=('Segoe UI',11),padding=(22,13),
+                        background=PANEL,foreground=CREAM)
+        style.map('Studio.TNotebook.Tab',background=[('selected','#48655e')],
+                  foreground=[('selected','#ffffff')])
 
-        # Header remains visible while editing.
-        heading = tk.Frame(self, bg=INK, padx=20, pady=13)
-        heading.pack(fill='x')
-        tk.Label(heading, text="THE CROW'S NEST", fg=GOLD, bg=INK,
-                 font=('Georgia', 24, 'bold')).pack(anchor='w')
-        tk.Label(heading, text='DOCUMENTARY STUDIO  /  PRODUCTION QUEUE  /  VOICE STUDIO  /  NO RENDER CREDITS',
-                 fg=MUTED, bg=INK, font=('Segoe UI', 9)).pack(anchor='w')
+        header=tk.Frame(self,bg=INK,padx=24,pady=16)
+        header.pack(fill='x')
+        tk.Label(header,text="The Crow's Nest",bg=INK,fg=CREAM,
+                 font=('Segoe UI',23,'bold')).pack(anchor='w')
+        tk.Label(header,text='A clear path from idea to finished documentary',
+                 bg=INK,fg=MUTED,font=('Segoe UI',11)).pack(anchor='w',pady=(3,0))
 
-        # Main pane scrolls on small laptop screens; bottom actions do not disappear.
-        self.canvas = tk.Canvas(self, bg=INK, highlightthickness=0)
-        scroll = ttk.Scrollbar(self, orient='vertical', command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=scroll.set)
-        scroll.pack(side='right', fill='y')
-        self.canvas.pack(fill='both', expand=True)
-        inside = tk.Frame(self.canvas, bg=INK, padx=20)
-        self.inner = inside
-        self.canvas_window = self.canvas.create_window((0,0), window=inside, anchor='nw')
-        inside.bind('<Configure>', lambda e:self.canvas.configure(scrollregion=self.canvas.bbox('all')))
-        self.canvas.bind('<Configure>', lambda e:self.canvas.itemconfigure(self.canvas_window, width=e.width))
-        self.canvas.bind_all('<MouseWheel>', self.mouse_scroll)
+        self.tabs=ttk.Notebook(self,style='Studio.TNotebook')
+        self.tabs.pack(fill='both',expand=True,padx=20,pady=(0,13))
 
-        self._label(inside, 'VIDEO TITLE')
-        self.title_var = tk.StringVar(value="The History of the Crow's Nest")
-        ttk.Entry(inside, textvariable=self.title_var, font=('Segoe UI', 12)).pack(fill='x', pady=(3,12))
+        def page(label):
+            frame=tk.Frame(self.tabs,bg=INK,padx=20,pady=19)
+            self.tabs.add(frame,text=label)
+            return frame
 
-        controls = tk.Frame(inside, bg=INK)
-        controls.pack(fill='x', pady=(0,12))
-        fmt = tk.Frame(controls, bg=INK)
-        fmt.pack(side='left', padx=(0,28))
-        self._label(fmt, 'OUTPUT FORMAT')
-        self.short = tk.BooleanVar(value=True)
-        self.wide = tk.BooleanVar(value=False)
-        ttk.Checkbutton(fmt, text='Shorts  9:16', variable=self.short, style='N.TCheckbutton').pack(side='left')
-        ttk.Checkbutton(fmt, text='YouTube  16:9', variable=self.wide, style='N.TCheckbutton').pack(side='left', padx=(14,0))
+        create=page('1. Write')
+        voice=page('2. Narrate')
+        export=page('3. Review & render')
+        activity=page('4. Activity & settings')
+        self.write_page=create
+        self.voice_page=voice
+        self.export_page=export
+        self.activity_page=activity
 
-        voice_frame = tk.Frame(controls, bg=INK)
-        voice_frame.pack(side='left', fill='x', expand=True)
-        self._label(voice_frame, 'NARRATOR  •  TRY THE VOICES BEFORE RENDERING')
-        self.refresh_voices()
-        self.voice_var = tk.StringVar(value=next(iter(VOICE_OPTIONS)))
-        self.voice_combo=ttk.Combobox(voice_frame, textvariable=self.voice_var, state='readonly',
-                     values=list(VOICE_OPTIONS), width=51)
-        self.voice_combo.pack(anchor='w', fill='x')
-
-        prompt_bar=tk.Frame(inside,bg=INK)
-        prompt_bar.pack(fill='x',pady=(4,8))
-        ttk.Button(prompt_bar,text='PROMPT → VIDEO QUEUE',command=self.open_production_studio).pack(side='left')
-        ttk.Button(prompt_bar,text='Quick draft (Ollama)',command=self.prompt_draft).pack(side='left',padx=(8,0))
-        ttk.Button(prompt_bar,text='VOICE STUDIO — RECORD / CLEAN / CLONE',command=self.open_voice_studio).pack(side='left',padx=8)
-        tk.Label(prompt_bar,text='Drafts are UNVERIFIED until the fact-check gate clears them.',fg=MUTED,bg=INK).pack(side='left')
-        self._label(inside, 'NARRATION SCRIPT   •   blank line = new scene')
-        self.script = scrolledtext.ScrolledText(inside, height=9, wrap='word',
-                                                fg=CREAM, bg=PANEL, insertbackground=CREAM,
-                                                font=('Segoe UI', 11), undo=True,
-                                                relief='flat', borderwidth=9)
-        self.script.pack(fill='x', pady=(4,11))
+        self._label(create,'Start with a topic or your own script')
+        tk.Label(create,text='Create a documentary draft with Ollama, or type your narration below. '
+                 'Separate scenes with blank lines.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=900,justify='left').pack(
+                     anchor='w',pady=(3,17))
+        prompt_bar=tk.Frame(create,bg=INK);prompt_bar.pack(fill='x',pady=(0,15))
+        ttk.Button(prompt_bar,text='Open prompt production queue',
+                   command=self.open_production_studio).pack(side='left',padx=(0,10))
+        ttk.Button(prompt_bar,text='Quick AI draft',
+                   command=self.prompt_draft).pack(side='left')
+        self._label(create,'Episode title')
+        self.title_var=tk.StringVar(value="The History of the Crow's Nest")
+        ttk.Entry(create,textvariable=self.title_var,font=('Segoe UI',12)).pack(
+            fill='x',pady=(5,18))
+        self._label(create,'Narration script')
+        self.script=scrolledtext.ScrolledText(create,height=13,wrap='word',
+                    fg=CREAM,bg=PANEL,insertbackground=CREAM,
+                    selectbackground='#48655e',font=('Segoe UI',12),
+                    relief='flat',borderwidth=0,padx=14,pady=12,undo=True)
+        self.script.pack(fill='both',expand=True,pady=(6,12))
         self.script.insert('1.0',
             "Long before radar, a lookout could be the first to recognize trouble on the horizon.\n\n"
             "From the upper deck, sailors scanned for ships, land, weather, and danger. Their duty was vigilance.\n\n"
             "This is The Crow's Nest. Military history, traditions, news, and the people behind the stories.")
+        self.script.bind('<KeyRelease>',lambda event:setattr(self,'last_preview',None))
+        tk.Label(create,text='Next: open Narrate to select a voice and generate playback.',
+                 bg=INK,fg=GOLD,font=('Segoe UI',10)).pack(anchor='w')
 
-        self.script.bind('<KeyRelease>', lambda event: setattr(self, 'last_preview', None))
-        self.voice_var.trace_add('write', lambda *_: setattr(self, 'last_preview', None))
-        pace = tk.Frame(inside, bg=INK)
-        pace.pack(fill='x', pady=(0,9))
-        tk.Label(pace, text='NARRATION PACE', fg=GOLD, bg=INK,
-                 font=('Segoe UI', 9, 'bold')).pack(side='left', padx=(0,12))
-        self.speed_var = tk.StringVar(value='0.97')
-        ttk.Combobox(pace, textvariable=self.speed_var, values=['0.85','0.90','0.94','0.97','1.00','1.05','1.10'],
-                     state='readonly', width=7).pack(side='left')
-        tk.Label(pace, text='0.97 = natural measured documentary pace', fg=MUTED,
-                 bg=INK, font=('Segoe UI',9)).pack(side='left', padx=(12,0))
-        self.speed_var.trace_add('write', lambda *_: setattr(self, 'last_preview', None))
+        self._label(voice,'Choose how the story sounds')
+        tk.Label(voice,text='Listen to a short sample before generating the full narration. '
+                 'Your own recordings and clones are managed in Voice Studio.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=920,justify='left').pack(
+                     anchor='w',pady=(3,20))
+        self.refresh_voices()
+        self.voice_var=tk.StringVar(value=next(iter(VOICE_OPTIONS)))
+        self._label(voice,'Narrator')
+        self.voice_combo=ttk.Combobox(voice,textvariable=self.voice_var,state='readonly',
+                      values=list(VOICE_OPTIONS),width=65)
+        self.voice_combo.pack(fill='x',pady=(6,18))
+        self.voice_var.trace_add('write',lambda *_:setattr(self,'last_preview',None))
+        pace=tk.Frame(voice,bg=INK);pace.pack(fill='x',pady=(0,22))
+        tk.Label(pace,text='Speaking pace',bg=INK,fg=CREAM,
+                 font=('Segoe UI',11,'bold')).pack(side='left',padx=(0,13))
+        self.speed_var=tk.StringVar(value='0.97')
+        ttk.Combobox(pace,textvariable=self.speed_var,
+                 values=['0.85','0.90','0.94','0.97','1.00','1.05','1.10'],
+                 state='readonly',width=9).pack(side='left')
+        self.speed_var.trace_add('write',lambda *_:setattr(self,'last_preview',None))
+        tk.Label(pace,text='0.97 gives a measured documentary pace',bg=INK,fg=MUTED,
+                 font=('Segoe UI',10)).pack(side='left',padx=(14,0))
+        actions=tk.Frame(voice,bg=INK);actions.pack(fill='x',pady=(0,12))
+        self.sample_button=ttk.Button(actions,text='▶ Hear voice sample',
+                         command=self.preview_selected_voice)
+        self.sample_button.pack(side='left',padx=(0,10))
+        self.voice_install_button=ttk.Button(actions,text='Install selected voice',
+                         command=self.install_voice)
+        self.voice_install_button.pack(side='left',padx=(0,10))
+        ttk.Button(actions,text='My voices: record / clean / clone',
+                   command=self.open_voice_studio).pack(side='left')
+        self.generate_button=tk.Button(voice,text='Generate full narration',
+                         command=self.generate_narration,bg=GOLD,fg=INK,
+                         activebackground='#bcd8cf',activeforeground=INK,relief='flat',
+                         font=('Segoe UI',12,'bold'),padx=18,pady=11,cursor='hand2')
+        self.generate_button.pack(anchor='w',pady=(14,13))
+        listen=tk.Frame(voice,bg=INK);listen.pack(fill='x')
+        self.preview_button=ttk.Button(listen,text='▶ Play generated narration',
+                         command=self.play_narration)
+        self.preview_button.pack(side='left',padx=(0,10))
+        ttk.Button(listen,text='■ Stop audio',command=self.stop_audio).pack(side='left')
+        tk.Label(voice,text='Playback happens inside Studio. No default media app is required. '
+                 'If the voice model is missing, install it once and try the sample again.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=850,
+                 justify='left').pack(anchor='w',pady=(20,0))
 
-        # Voice actions are prominent and independent from video rendering.
-        voice_actions = tk.Frame(inside, bg=INK)
-        voice_actions.pack(fill='x', pady=(0,6))
-        self.generate_button = tk.Button(voice_actions, text='1  GENERATE NARRATION',
-                                         command=self.generate_narration, bg=GOLD, fg=INK,
-                                         activebackground='#ffd98d', relief='flat',
-                                         font=('Segoe UI', 10, 'bold'), padx=18, pady=10,
-                                         cursor='hand2')
-        self.generate_button.pack(side='left', padx=(0,8))
-        self.sample_button = ttk.Button(voice_actions, text='HEAR THIS VOICE', command=self.preview_selected_voice)
-        self.sample_button.pack(side='left', padx=(0,8))
-        self.preview_button = ttk.Button(voice_actions, text='Play full narration', command=self.play_narration)
-        self.preview_button.pack(side='left', padx=(0,8))
-        self.voice_install_button = ttk.Button(voice_actions, text='Install selected voice',
-                                               command=self.install_voice)
-        self.voice_install_button.pack(side='left')
-        tk.Label(inside, text='Kokoro sounds more natural than Piper. One-time model download ~350 MB; later previews and production run offline.',
-                 fg=MUTED, bg=INK, font=('Segoe UI', 9), anchor='w').pack(fill='x', pady=(0,15))
+        self._label(export,'Check your evidence, then make the video')
+        tk.Label(export,text='Fact-check claims and confirm media rights before rendering. '
+                 'No unpublished draft is automatically treated as verified.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=920,
+                 justify='left').pack(anchor='w',pady=(4,21))
+        self._label(export,'Output format')
+        fmt=tk.Frame(export,bg=INK);fmt.pack(fill='x',pady=(5,19))
+        self.short=tk.BooleanVar(value=True)
+        self.wide=tk.BooleanVar(value=False)
+        ttk.Checkbutton(fmt,text='Vertical Short (9:16)',variable=self.short).pack(side='left',padx=(0,20))
+        ttk.Checkbutton(fmt,text='Widescreen video (16:9)',variable=self.wide).pack(side='left')
+        self._label(export,'Optional footage folder')
+        pathrow=tk.Frame(export,bg=INK);pathrow.pack(fill='x',pady=(6,7))
+        self.folder=tk.StringVar(value=str(FOOTAGE))
+        ttk.Entry(pathrow,textvariable=self.folder).pack(side='left',fill='x',expand=True)
+        ttk.Button(pathrow,text='Browse',command=self.browse).pack(side='left',padx=(10,0))
+        tk.Label(export,text='Use 01.mp4 or 01.jpg for scene one, 02.mp4 for scene two, and so on. '
+                 'If footage is missing, Studio makes a branded scene card.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',10),
+                 wraplength=900,justify='left').pack(anchor='w',pady=(0,18))
+        ttk.Button(export,text='Review factual claims and sources',
+                   command=self.fact_check).pack(anchor='w',pady=(0,16))
+        self.review=tk.BooleanVar(value=False)
+        ttk.Checkbutton(export,text='I reviewed the cited claims and rights to the footage',
+                        variable=self.review).pack(anchor='w',pady=(0,8))
+        self.demo=tk.BooleanVar(value=False)
+        ttk.Checkbutton(export,text='Advanced: silent test render (no narration)',
+                        variable=self.demo).pack(anchor='w',pady=(0,20))
+        row=tk.Frame(export,bg=INK);row.pack(fill='x')
+        self.render_button=tk.Button(row,text='Render video',
+                         command=self.render,bg=GOLD,fg=INK,
+                         activebackground='#bcd8cf',activeforeground=INK,relief='flat',
+                         font=('Segoe UI',12,'bold'),padx=21,pady=12,cursor='hand2')
+        self.render_button.pack(side='left',padx=(0,14))
+        ttk.Button(row,text='Open exports folder',
+                   command=self.open_exports).pack(side='left')
 
-        self._label(inside, 'OPTIONAL FOOTAGE FOLDER   •   01.mp4 / 01.jpg / 02.mp4 ...')
-        pathrow = tk.Frame(inside, bg=INK)
-        pathrow.pack(fill='x', pady=(3,9))
-        self.folder = tk.StringVar(value=str(FOOTAGE))
-        ttk.Entry(pathrow, textvariable=self.folder).pack(side='left', fill='x', expand=True)
-        ttk.Button(pathrow, text='Browse footage', command=self.browse).pack(side='left', padx=(8,0))
-        tk.Label(inside, text='No footage? The editor will make branded scene cards. Actual military footage makes a stronger documentary.',
-                 fg=MUTED, bg=INK, font=('Segoe UI', 9), anchor='w').pack(fill='x', pady=(0,10))
+        self._label(activity,'Activity log and system maintenance')
+        tk.Label(activity,text='Progress, model-installation output, and error messages appear here. '
+                 'Use Check setup if narration or rendering fails.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=900,
+                 justify='left').pack(anchor='w',pady=(4,16))
+        row=tk.Frame(activity,bg=INK);row.pack(fill='x',pady=(0,15))
+        ttk.Button(row,text='Check setup',command=self.check_setup).pack(side='left',padx=(0,10))
+        ttk.Button(row,text='System / Updates',command=self.system_updates).pack(side='left',padx=(0,10))
+        ttk.Button(row,text='Open exports',command=self.open_exports).pack(side='left')
+        self.log=scrolledtext.ScrolledText(activity,height=16,wrap='word',
+                          fg=CREAM,bg=PANEL,insertbackground=CREAM,
+                          font=('Consolas',10),relief='flat',borderwidth=0,
+                          padx=13,pady=12)
+        self.log.pack(fill='both',expand=True,pady=(0,10))
 
-        self.review = tk.BooleanVar(value=False)
-        ttk.Checkbutton(inside, text='I reviewed footage rights and personally reviewed all cited factual claims',
-                        variable=self.review, style='N.TCheckbutton').pack(anchor='w', pady=(0,5))
-        self.demo = tk.BooleanVar(value=False)
-        ttk.Checkbutton(inside, text='Advanced: silent test render only (no narration)',
-                        variable=self.demo, style='N.TCheckbutton').pack(anchor='w', pady=(0,12))
-
-        self._label(inside, 'ACTIVITY LOG')
-        self.log = scrolledtext.ScrolledText(inside, height=8, wrap='word',
-                                             fg='#e0e8f2', bg='#030d18', insertbackground=CREAM,
-                                             font=('Consolas', 9), relief='flat', borderwidth=8)
-        self.log.pack(fill='x', pady=(3,10))
-
-        # Always-visible bottom toolbar with the main deliverable action.
-        bottom = tk.Frame(self, bg=PANEL, padx=20, pady=10)
-        bottom.pack(side='bottom', fill='x')
-        self.render_button = tk.Button(bottom, text='2  RENDER VIDEO',
-                                       command=self.render, bg=GOLD, fg=INK,
-                                       activebackground='#ffd98d', relief='flat',
-                                       font=('Segoe UI', 12, 'bold'), padx=16, pady=9,
-                                       cursor='hand2')
-        self.render_button.pack(side='left', padx=(0,14))
-        ttk.Button(bottom, text='Open exports', command=self.open_exports).pack(side='left', padx=(0,7))
-        ttk.Button(bottom, text='FACT CHECK', command=self.fact_check).pack(side='left', padx=(0,7))
-        ttk.Button(bottom, text='System / Updates', command=self.system_updates).pack(side='left', padx=(0,7))
-        ttk.Button(bottom, text='Check setup', command=self.check_setup).pack(side='left')
-        self.status = tk.StringVar(value='Ready • Generate narration, listen, then render your MP4.')
-        tk.Label(bottom, textvariable=self.status, fg=CREAM, bg=PANEL,
-                 font=('Segoe UI', 9), anchor='w', wraplength=480).pack(side='right', padx=(10,0))
-        self._set_log('Studio v4.0: Prompt production queue, source suggestions, narration, voice profiles, factual review, and verified updater.\n')
-        self.after(1800, self.auto_update_check)
-        self.after(150, self.poll)
+        footer=tk.Frame(self,bg=PANEL,padx=20,pady=13)
+        footer.pack(fill='x')
+        self.status=tk.StringVar(value='Ready. Start at Write, then Narrate, then Review & render.')
+        tk.Label(footer,textvariable=self.status,fg=CREAM,bg=PANEL,
+                 font=('Segoe UI',10),anchor='w',justify='left',
+                 wraplength=960).pack(fill='x')
+        self._set_log('Studio '+update_engine.VERSION+' ready. Choose a step above.\n')
+        self.after(1800,self.auto_update_check)
+        self.after(150,self.poll)
+        self.protocol('WM_DELETE_WINDOW',self.close)
 
     def mouse_scroll(self, event):
-        # Let the text editor scroll naturally while it has keyboard focus.
-        if isinstance(self.focus_get(), tk.Text):
-            return
-        if event.delta:
-            self.canvas.yview_scroll(int(-1 * (event.delta/120)), 'units')
+        # Notebook pages use their own native scrollable widgets.
+        return
 
     def _label(self, parent, label):
         tk.Label(parent, text=label, fg=GOLD, bg=INK,
@@ -313,6 +352,7 @@ class App(tk.Tk):
             if ident==__import__('production_engine').get_job(job_id)['voice']:
                 self.voice_var.set(label);break
         self._set_log(f'Loaded production job {job_id}. Review claims in FACT CHECK, check footage rights, then narrate and render.\n')
+        self.tabs.select(self.write_page)
         self.lift()
 
     def refresh_voices(self):
@@ -331,6 +371,7 @@ class App(tk.Tk):
             if value == desired:
                 self.voice_var.set(label)
                 self._set_log(f'Selected custom voice {name}. Install its Qwen model before generating narration.\n')
+                self.tabs.select(self.voice_page)
                 break
 
     def prompt_draft(self):
@@ -537,6 +578,7 @@ class App(tk.Tk):
                         self.loaded_manifest_path=None;self.loaded_production_job=None
                         self.title_var.set(value[0]);self.script.delete('1.0','end');self.script.insert('1.0',value[1])
                         self.review.set(False);self.demo.set(False);self.last_preview=None
+                        self.tabs.select(self.write_page)
                     elif kind=='preview':
                         self.last_preview=Path(value)
                     elif kind=='play':
