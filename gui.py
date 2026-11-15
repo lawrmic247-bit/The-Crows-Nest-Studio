@@ -9,7 +9,7 @@ from narration import voice_slug, AudioPlayer, PlaybackError, find_ffplay, sampl
 from voice_profiles import list_profiles
 from voice_studio_ui import VoiceStudio
 import production_engine as production_engine
-from production_ui import ProductionStudio
+from production_ui import ProductionStudio, open_text_model_setup
 from fact_checker_ui import FactCheckDialog
 import update_engine
 
@@ -303,6 +303,8 @@ class App(tk.Tk):
         ttk.Button(row,text='System / Updates',command=self.system_updates).pack(side='left',padx=(0,10))
         ttk.Button(row,text='Display comfort',command=self.display_comfort).pack(side='left',padx=(0,10))
         ttk.Button(row,text='Open exports',command=self.open_exports).pack(side='left')
+        ttk.Button(activity,text='Text model setup (Ollama)',
+                   command=self.text_model_setup).pack(anchor='w',pady=(0,13))
         self.log=scrolledtext.ScrolledText(activity,height=16,wrap='word',
                           fg=CREAM,bg=PANEL,insertbackground=CREAM,
                           font=('Consolas',10),relief='flat',borderwidth=0,
@@ -696,20 +698,14 @@ class App(tk.Tk):
                 self.tabs.select(self.voice_page)
                 break
 
-    def prompt_draft(self):
-        topic=simpledialog.askstring(
-            'Research and draft a documentary',
-            'What topic should Studio research and turn into a video?',
-            parent=self,initialvalue=self.title_var.get())
-        if not topic:return
-        duration=simpledialog.askinteger(
-            'Full documentary length','Target length in minutes (1–30):',
-            minvalue=1,maxvalue=30,initialvalue=10,parent=self)
-        if duration is None:return
+    def text_model_setup(self,on_select=None):
+        return open_text_model_setup(self,on_select=on_select)
+
+    def _start_quick_draft(self,topic,duration,model):
         try:
             job=production_engine.create_job(
                 topic,minutes=duration,fmt='both',voice=self._voice(),
-                auto_media=True,visual_style='hybrid',
+                model=model,auto_media=True,visual_style='hybrid',
                 deliverables=['full','shorts','tiktok'])
         except (ValueError,OSError) as exc:
             messagebox.showerror('Cannot create documentary',str(exc),parent=self)
@@ -721,6 +717,28 @@ class App(tk.Tk):
                         result.get('research_source_count',0))))
             self.pipe.put(('done','Research and draft prepared. Review facts and sources before rendering.'))
         self._run_task('Researching your topic and writing a source-led draft...',work)
+
+    def prompt_draft(self):
+        topic=simpledialog.askstring(
+            'Research and draft a documentary',
+            'What topic should Studio research and turn into a video?',
+            parent=self,initialvalue=self.title_var.get())
+        if not topic:return
+        duration=simpledialog.askinteger(
+            'Full documentary length','Target length in minutes (1–30):',
+            minvalue=1,maxvalue=30,initialvalue=10,parent=self)
+        if duration is None:return
+        preferred=update_engine.load_settings().get('ollama_model',
+                                                    production_engine.RECOMMENDED_TEXT_MODEL)
+        try:
+            chosen=production_engine.select_local_model(preferred)
+        except production_engine.OllamaSetupError as exc:
+            self.status.set('A local script-writing model is needed. Opening text model setup.')
+            self._set_log('Text model setup: '+str(exc)+'\n')
+            self.text_model_setup(
+                on_select=lambda name:self._start_quick_draft(topic,duration,name))
+            return
+        self._start_quick_draft(topic,duration,chosen)
 
     def open_research_sources(self):
         if not self.loaded_production_job:
