@@ -130,6 +130,7 @@ class App(tk.Tk):
         self.models_checked=False
         self.fact_review_complete=False
         self.played_full_narration=False
+        self.ai_visuals_prepared=True
         self.voice_approved=tk.BooleanVar(value=False)
         self.fact_window=None
         shell=tk.Frame(self,bg=INK)
@@ -472,6 +473,15 @@ class App(tk.Tk):
                  'Aspect ratio only controls the final frame.',
                  bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=800,
                  justify='left').pack(anchor='w',pady=(0,17))
+        self.visual_status=tk.StringVar(value='Visual assets will be reviewed here after narration.')
+        tk.Label(export,textvariable=self.visual_status,bg=PANEL,fg=CREAM,
+                 font=('Segoe UI',10),padx=14,pady=12,wraplength=810,
+                 justify='left').pack(fill='x',pady=(0,11))
+        self.visual_asset_list=tk.Listbox(export,height=5,bg=FIELD_BG,fg=CREAM,
+                 selectbackground=TAB_BG,font=('Segoe UI',10),relief='flat')
+        self.visual_asset_list.pack(fill='x',pady=(0,8))
+        ttk.Button(export,text='Open selected asset for rights review',
+                   command=self.open_selected_asset).pack(anchor='w',pady=(0,13))
         self._label(export,'Optional footage folder')
         pathrow=tk.Frame(export,bg=INK);pathrow.pack(fill='x',pady=(6,7))
         self.folder=tk.StringVar(value=str(FOOTAGE))
@@ -597,12 +607,15 @@ class App(tk.Tk):
         self.unlocked_step=0
         self.fact_review_complete=False
         self.played_full_narration=False
+        self.ai_visuals_prepared=True
         self.voice_approved.set(False)
         self.topic_var.set('')
         self.title_var.set('Untitled documentary')
         self.fact_panel.slug=None
         self.fact_panel.claims.delete(*self.fact_panel.claims.get_children())
         self.fact_panel.summary.set('Load a researched documentary to review evidence.')
+        self.visual_asset_list.delete(0,'end')
+        self.visual_status.set('Visual assets will appear after narration.')
         self.model_status.set('Choose your local model before beginning the next documentary.')
         self.script.delete('1.0','end')
         self._loaded_script_snapshot=''
@@ -698,6 +711,7 @@ class App(tk.Tk):
             return False
         self._unlock(3)
         self._go(3)
+        self.refresh_visual_assets(doc)
         return True
 
     def _go(self,index:int):
@@ -726,6 +740,9 @@ class App(tk.Tk):
             names=('RESEARCH & BUILD STORY  →','VERIFY SCRIPT & CONTINUE  →',
                    'APPROVE AUDIO & CONTINUE  →','RENDER THE VIDEO  →',
                    'APPROVE & OPEN BUFFER  →','BACK TO YOUR FILM  →')
+            if index==3 and not self.ai_visuals_prepared:
+                names=tuple('PREPARE AI VISUALS  →' if i==3 else v
+                            for i,v in enumerate(names))
             self.step_cta.configure(text=names[index],
                                     state='disabled' if self.busy else 'normal')
             self.back_button.configure(state='disabled' if index==0 else 'normal')
@@ -1284,7 +1301,10 @@ class App(tk.Tk):
         self.last_preview=None
         self._sync_navigation()
         self.output_aspect.set('wide' if delivery=='full' else 'short')
+        self.ai_visuals_prepared=(data.get('visual_style')!='ai_reenactment'
+                                   or data.get('ai_visuals_prepared') is True)
         self._sync_output_aspect()
+        self.refresh_visual_assets(data)
         self.review.set(False);self.demo.set(False);self.last_preview=None
         for label,ident in VOICE_OPTIONS.items():
             if ident==__import__('production_engine').get_job(job_id)['voice']:
@@ -1465,7 +1485,100 @@ class App(tk.Tk):
             except OSError:pass
         self.destroy()
 
+    def refresh_visual_assets(self,data:dict):
+        self.visual_asset_list.delete(0,'end')
+        scenes=data.get('scenes',[]) if isinstance(data,dict) else []
+        self.visual_asset_paths=[]
+        for index,scene in enumerate(scenes,1):
+            path=str(scene.get('visual',''))
+            provenance=str(scene.get('visual_provenance',''))
+            if path:
+                kind='AI ILLUSTRATION' if 'AI-generated' in provenance else 'ARCHIVAL / USER MEDIA'
+                self.visual_asset_list.insert('end',f'{index:02}  |  {kind}  |  {Path(path).name}')
+                self.visual_asset_paths.append(path)
+            else:
+                self.visual_asset_list.insert('end',f'{index:02}  |  TITLE CARD  |  No footage linked')
+                self.visual_asset_paths.append('')
+        if data.get('visual_style')=='ai_reenactment' and not data.get('ai_visuals_prepared'):
+            self.visual_status.set('Step 4 will prepare local AI illustrations only AFTER fact and voice clearance. '
+                                   'Use Continue, then inspect the results before approving footage rights.')
+        else:
+            count=sum('AI-generated' in str(x.get('visual_provenance',''))
+                      for x in scenes)
+            self.visual_status.set(
+                f'{len(scenes)} scenes • {count} clearly labeled AI illustrations. '
+                'Inspect the original source, file rights and attribution before rendering.')
+
+    def open_selected_asset(self):
+        selected=self.visual_asset_list.curselection()
+        if not selected:return
+        path=self.visual_asset_paths[selected[0]]
+        if not path or not Path(path).is_file():
+            self._block_step('This is a title card, or the selected media file is missing.')
+            return
+        self._open(Path(path))
+
+    def prepare_ai_visuals(self,manifest:Path,data:dict):
+        if self.busy:
+            return
+        if not self.fact_review_complete:
+            self._block_step('FACTS FIRST — Clear Step 2 before generating any reenactment.')
+            return
+        try:
+            script='\n\n'.join(scene.get('narration','') for scene in data['scenes'])
+            require_clearance(data['slug'],script)
+        except (ValueError,OSError,KeyError) as exc:
+            self._block_step('FACT CLEARANCE REQUIRED — '+str(exc)[:170])
+            return
+        job_id=data.get('production_job','')
+        if not job_id:
+            self._block_step('No production job found. Choose archival imagery or reload a researched project.')
+            return
+        self.review.set(False)
+        def worker():
+            job=production_engine.get_job(job_id)
+            media_dir=production_engine.MEDIA_DIR/job_id
+            media_dir.mkdir(parents=True,exist_ok=True)
+            count=production_engine._local_reenactments(
+                job,data['scenes'],
+                progress=lambda note:self.pipe.put(('progress',note)))
+            credits_path=media_dir/'media_credits.json'
+            original=[]
+            if credits_path.is_file():
+                try:
+                    original=json.loads(credits_path.read_text(encoding='utf-8')).get('items',[])
+                except (OSError,ValueError,TypeError):
+                    original=[]
+            for index,scene in enumerate(data['scenes'],1):
+                if 'AI-generated' in str(scene.get('visual_provenance','')):
+                    original.append({
+                        'title':scene.get('heading',''), 'local_path':scene.get('visual',''),
+                        'publisher':'Local ComfyUI workflow',
+                        'license':'Check chosen model license and generated-media terms',
+                        'restrictions':'AI ILLUSTRATION, NOT HISTORICAL FOOTAGE',
+                        'scene':index})
+            production_engine.atomic_json(credits_path,{
+                'notice':'Review every image and AI clip before confirming media rights.',
+                'items':original})
+            data['ai_visuals_prepared']=True
+            data['ai_generated_clip_count']=count
+            data['ai_asset_review_required']=bool(count)
+            data['approved']=False
+            production_engine.atomic_json(manifest,data)
+            self.pipe.put(('visuals_ready',(str(manifest),count)))
+            self.pipe.put(('done','Visual preparation completed. Inspect footage before render approval.'))
+        self._run_task('Preparing local AI reenactments after factual clearance...',worker)
+
     def render(self):
+        try:
+            current=self._manifest()
+            data=json.loads(current.read_text(encoding='utf-8'))
+        except (OSError,ValueError) as exc:
+            self._block_step('SCRIPT NEEDED — '+str(exc)[:140])
+            return
+        if data.get('visual_style')=='ai_reenactment' and not self.ai_visuals_prepared:
+            self.prepare_ai_visuals(current,data)
+            return
         formats=[fmt for fmt,value in [('short',self.short),('wide',self.wide)] if value.get()]
         if not formats:
             self._block_step('Choose widescreen or vertical video format.')
@@ -1687,6 +1800,16 @@ class App(tk.Tk):
                         self.played_full_narration=False
                         self.voice_approved.set(False)
                         self._block_step('VOICE GENERATED — Listen to it, approve, then click Continue.')
+                    elif kind=='visuals_ready':
+                        manifest,count=value
+                        self.ai_visuals_prepared=True
+                        self.review.set(False)
+                        self.refresh_visual_assets(
+                            json.loads(Path(manifest).read_text(encoding='utf-8')))
+                        self._block_step(
+                            f'{count} AI illustration(s) prepared. Review each asset and its rights, '
+                            'check the footage approval box, then Continue to render.')
+                        self._sync_navigation()
                     elif kind=='rendered':
                         self._set_rendered(Path(value))
                         self._unlock(4)
