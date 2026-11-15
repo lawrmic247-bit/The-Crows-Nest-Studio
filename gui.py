@@ -564,7 +564,8 @@ class App(tk.Tk):
         self.busy = value
         state = 'disabled' if value else 'normal'
         for btn in (self.generate_button, self.preview_button,
-                    self.voice_install_button, self.sample_button, self.render_button):
+                    self.voice_install_button, self.sample_button,
+                    self.render_button, self.build_button):
             btn.configure(state=state)
 
     def _run_task(self, name, runner):
@@ -642,6 +643,96 @@ class App(tk.Tk):
         path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text(json.dumps(obj,indent=2,ensure_ascii=False),encoding='utf-8')
         return path
+
+    def _script_edited(self):
+        self.last_preview=None
+        self.review.set(False)
+        if self.loaded_manifest_path:
+            self.pipeline_status.set('SCRIPT CHANGED  •  Save, then re-check factual claims.')
+
+    def save_script(self):
+        try:
+            saved=self._manifest()
+            self._loaded_script_snapshot=self.script.get('1.0','end').strip()
+            self.status.set('Saved script: '+saved.name)
+            self.pipeline_status.set('SCRIPT SAVED  •  Continue to Fact checker or narration.')
+        except (OSError,ValueError) as exc:
+            messagebox.showwarning('Cannot save script',str(exc),parent=self)
+
+    def start_production(self):
+        topic=self.topic_var.get().strip()
+        if len(topic)<8:
+            messagebox.showwarning('Describe the film',
+                'Enter a topic or story angle so Studio knows what to research.',parent=self)
+            self.topic_input.focus_set()
+            return
+        outputs=[key for key,flag in (
+            ('full',self.want_full),('shorts',self.want_shorts),('tiktok',self.want_tiktok))
+            if flag.get()]
+        if not outputs:
+            messagebox.showwarning('Choose an output',
+                'Select a full film, YouTube Short, or TikTok.',parent=self)
+            return
+        try:
+            minutes=int(self.minutes_var.get())
+            style=self.visual_styles[self.visual_style_var.get()]
+        except (KeyError,ValueError) as exc:
+            messagebox.showerror('Invalid production settings',str(exc),parent=self)
+            return
+        try:
+            preferred=update_engine.load_settings().get(
+                'ollama_model',production_engine.RECOMMENDED_TEXT_MODEL)
+            model=production_engine.select_local_model(preferred)
+        except production_engine.OllamaSetupError:
+            self.pipeline_status.set('SETUP NEEDED  •  Choose or install a local script-writing model.')
+            self.text_model_setup(on_select=lambda model:
+                  self._queue_production(topic,minutes,style,outputs,model))
+            return
+        self._queue_production(topic,minutes,style,outputs,model)
+
+    def _queue_production(self,topic,minutes,visual_style,deliverables,model):
+        fmt=('both' if len(deliverables)>1 else
+             'wide' if deliverables==['full'] else 'short')
+        try:
+            job=production_engine.create_job(
+                topic,minutes=minutes,fmt=fmt,model=model,
+                voice=self._voice(),auto_media=True,
+                visual_style=visual_style,deliverables=deliverables)
+        except (OSError,ValueError) as exc:
+            messagebox.showerror('Could not start production',str(exc),parent=self)
+            return
+        self.pipeline_status.set('RESEARCHING  •  Finding source leads, then writing the draft.')
+        self._set_log('New film job '+job['id']+' / '+topic+'\n')
+        def work():
+            result=production_engine.run_job(
+                job['id'],progress=lambda note:self.pipe.put(('progress',note)))
+            self.pipe.put(('quick_draft_ready',(
+                result['id'],result['manifest'],
+                result.get('research_source_count',0))))
+            self.pipe.put(('done','Scripts prepared. Review sources and claims before narration.'))
+        self._run_task('Researching and developing '+topic[:72],work)
+
+    def load_selected_variant(self,event=None):
+        if not self.loaded_production_job:
+            return
+        try:
+            requested={'Full documentary':'full','YouTube Short':'shorts',
+                       'TikTok':'tiktok'}[self.active_variant.get()]
+            job=production_engine.get_job(self.loaded_production_job)
+            path=job.get('variants',{}).get(requested)
+            if not path or not Path(path).is_file():
+                raise ValueError('This version was not generated for this production.')
+            current=self.script.get('1.0','end').strip()
+            if (self.loaded_manifest_path is not None and
+                    current!=self._loaded_script_snapshot):
+                if not messagebox.askyesno('Save your changes?',
+                        'Save the current script before switching video versions?',
+                        parent=self):
+                    return
+                self._manifest()
+            self.load_production_draft(Path(path),job['id'])
+        except (OSError,ValueError,KeyError) as exc:
+            messagebox.showwarning('Cannot switch format',str(exc),parent=self)
 
     def edit_pronunciations(self):
         """Edit local pronunciation rules without altering historical script text."""
@@ -767,6 +858,7 @@ class App(tk.Tk):
             return
         self.production_window=ProductionStudio(
             self,on_load=self.load_production_draft,default_voice=self._voice())
+        self.production_window.tabs.select(self.production_window.queue_page)
 
     def open_chat_ready(self):
         if not self.pending_chat_job:
@@ -843,6 +935,10 @@ class App(tk.Tk):
         self.script.delete('1.0','end')
         self.script.insert('1.0','\n\n'.join(x.get('narration','') for x in data['scenes']))
         delivery=data.get('deliverable','full')
+        self._loaded_script_snapshot=self.script.get('1.0','end').strip()
+        self.active_variant.set({'full':'Full documentary','shorts':'YouTube Short',
+                                 'tiktok':'TikTok'}.get(delivery,'Full documentary'))
+        self.pipeline_status.set('DRAFT READY  •  Check facts, then record narration.')
         self.short.set(delivery in ('shorts','tiktok'))
         self.wide.set(delivery=='full')
         self.review.set(False);self.demo.set(False);self.last_preview=None
@@ -1174,7 +1270,10 @@ class App(tk.Tk):
                 msg=self.pipe.get_nowait()
                 if isinstance(msg,tuple):
                     kind,value=msg
-                    if kind=='quick_draft_ready':
+                    if kind=='progress':
+                        self.pipeline_status.set(str(value)[:180])
+                        self._set_log(str(value)+'\n')
+                    elif kind=='quick_draft_ready':
                         job_id,manifest,found=value
                         self.load_production_draft(Path(manifest),job_id)
                         self.status.set(f'{found} research source lead(s) found. Review the written '
