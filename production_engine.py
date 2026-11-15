@@ -381,6 +381,8 @@ def discover_research(topic:str,*,fetch=None)->dict:
                     excerpt=strip_html(str(item.get("excerpt") or item.get("description") or ""))
                 else:
                     page_url=str(item.get("id") or "")
+                    if page_url.startswith("http://www.loc.gov/"):
+                        page_url="https://"+page_url[len("http://"):]
                     if not page_url.startswith("https://www.loc.gov/"):
                         continue
                     descr=item.get("description") or item.get("subject") or ""
