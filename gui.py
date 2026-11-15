@@ -332,11 +332,9 @@ class App(tk.Tk):
         ttk.Button(bottom,text='Review facts first',
                    command=self.fact_check).pack(side='left')
 
-        self._label(voice,'Choose how the story sounds')
-        tk.Label(voice,text='Listen to a short sample before generating the full narration. '
-                 'Your own recordings and clones are managed in Voice Studio.',
-                 bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=920,justify='left').pack(
-                     anchor='w',pady=(3,20))
+        self._stage_heading(voice,'02 / NARRATION',
+             'The voice behind the story',
+             'Choose a documentary narrator, preview the sound, then create the final voice track.')
         self.refresh_voices()
         self.voice_var=tk.StringVar(value=next(iter(VOICE_OPTIONS)))
         self._label(voice,'Narrator')
@@ -379,12 +377,13 @@ class App(tk.Tk):
                  'If the voice model is missing, install it once and try the sample again.',
                  bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=850,
                  justify='left').pack(anchor='w',pady=(20,0))
+        ttk.Button(voice,text='CONTINUE TO FACT CHECK',
+                   style='Studio.Primary.TButton',
+                   command=lambda:self._go(2)).pack(anchor='w',pady=(25,15))
 
-        self._label(export,'Check your evidence, then make the video')
-        tk.Label(export,text='Fact-check claims and confirm media rights before rendering. '
-                 'No unpublished draft is automatically treated as verified.',
-                 bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=920,
-                 justify='left').pack(anchor='w',pady=(4,21))
+        self._stage_heading(export,'03 / EDITORIAL CLEARANCE',
+             'Verify before the camera rolls',
+             'The manuscript and footage must pass review. AI drafts are never automatically verified.')
         self._label(export,'Output format')
         fmt=tk.Frame(export,bg=INK);fmt.pack(fill='x',pady=(5,19))
         self.short=tk.BooleanVar(value=True)
@@ -417,12 +416,9 @@ class App(tk.Tk):
         ttk.Button(row,text='Open exports folder',
                    command=self.open_exports).pack(side='left')
 
-        self._label(publish,'Review the complete video before publishing')
-        tk.Label(publish,text='Preview the complete MP4 with sound. Nothing is uploaded automatically. '
-                 'When you approve it, Studio will open Buffer and your export folder '
-                 'so you can attach the file and choose your channels.',
-                 bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=900,
-                 justify='left').pack(anchor='w',pady=(3,20))
+        self._stage_heading(publish,'04 / FINAL SCREENING',
+             'See the finished film',
+             'Watch the complete MP4 with sound. You decide if and when to publish through Buffer.')
         self.rendered_label=tk.StringVar(value='No finished video selected. Render a documentary or choose an MP4.')
         tk.Label(publish,textvariable=self.rendered_label,bg=PANEL,fg=CREAM,
                  font=('Segoe UI',11),justify='left',wraplength=880,
@@ -447,11 +443,9 @@ class App(tk.Tk):
                  bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=900,
                  justify='left').pack(anchor='w',pady=(18,0))
 
-        self._label(activity,'Activity log and system maintenance')
-        tk.Label(activity,text='Progress, model-installation output, and error messages appear here. '
-                 'Use Check setup if narration or rendering fails.',
-                 bg=INK,fg=MUTED,font=('Segoe UI',11),wraplength=900,
-                 justify='left').pack(anchor='w',pady=(4,16))
+        self._stage_heading(activity,'05 / WORKSPACE & SETTINGS',
+             'Tools behind the camera',
+             'Manage the local models, display comfort, updates, exports and technical activity.')
         row=tk.Frame(activity,bg=INK);row.pack(fill='x',pady=(0,15))
         ttk.Button(row,text='Check setup',command=self.check_setup).pack(side='left',padx=(0,10))
         ttk.Button(row,text='System / Updates',command=self.system_updates).pack(side='left',padx=(0,10))
@@ -467,7 +461,7 @@ class App(tk.Tk):
 
         footer=tk.Frame(self,bg=PANEL,padx=20,pady=13)
         footer.pack(fill='x')
-        self.status=tk.StringVar(value='Ready. Start at Write, then Narrate, then Review & render.')
+        self.status=tk.StringVar(value='STUDIO READY   /   Create a film brief to begin.')
         tk.Label(footer,textvariable=self.status,fg=CREAM,bg=PANEL,
                  font=('Segoe UI',10),anchor='w',justify='left',
                  wraplength=960).pack(fill='x')
@@ -551,6 +545,17 @@ class App(tk.Tk):
 
     def mouse_scroll(self,event):
         return self._page_mouse_wheel(event)
+
+    def _stage_heading(self,parent,step,title,description):
+        banner=tk.Frame(parent,bg=PANEL,padx=25,pady=22)
+        banner.pack(fill='x',pady=(0,23))
+        tk.Label(banner,text=step,bg=PANEL,fg=GOLD,
+                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x')
+        tk.Label(banner,text=title,bg=PANEL,fg=CREAM,
+                 font=('Segoe UI',20,'bold'),anchor='w').pack(fill='x',pady=(8,7))
+        tk.Label(banner,text=description,bg=PANEL,fg=MUTED,
+                 font=('Segoe UI',11),wraplength=750,justify='left',
+                 anchor='w').pack(fill='x')
 
     def _label(self, parent, label):
         tk.Label(parent, text=label, fg=GOLD, bg=INK,
