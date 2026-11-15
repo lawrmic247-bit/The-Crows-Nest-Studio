@@ -29,9 +29,94 @@ MODEL_URL = ('https://github.com/thewh1teagle/kokoro-onnx/releases/'
              'download/model-files-v1.1/kokoro-v1.0.onnx')
 VOICES_URL = ('https://github.com/thewh1teagle/kokoro-onnx/releases/'
               'download/model-files-v1.1/voices-v1.0.bin')
-SAMPLE_TEXT = ("Long before radar, a lookout could be the first to recognize trouble "
-               "on the horizon. From the crow's nest, vigilance was everything. "
+SAMPLE_TEXT = ("In 1967, a Navy corpsman served with the Marine Corps in Vietnam. "
+               "On May 16, 1968, Donald Ballard treated wounded Marines in Quảng Trị. "
                "This is The Crow's Nest.")
+
+
+# Only TTS input is normalized; scripts and subtitles keep the original text.
+PRONUNCIATION_FILE = (Path(os.environ.get('LOCALAPPDATA') or Path.home()/'.local'/'share')
+                      / 'TheCrowsNestStudioData' / 'pronunciations.json')
+DEFAULT_PRONUNCIATIONS = {
+    'corpsman': 'core-man',
+    'corpsmen': 'core-men',
+    'Marine Corps': 'Marine Core',
+    'Quảng Trị': 'Kwang Tree',
+    'Đà Nẵng': 'Dah Nang',
+}
+_ONES = ('zero','one','two','three','four','five','six','seven','eight','nine',
+         'ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen',
+         'seventeen','eighteen','nineteen')
+_TENS = ('','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety')
+_DECADES = {20:'twenties',30:'thirties',40:'forties',50:'fifties',
+            60:'sixties',70:'seventies',80:'eighties',90:'nineties'}
+_YEAR_PATTERN = re.compile(r'(?<![\w])((?:1[0-9]{3}|20[0-9]{2}))(s?)(?![\w])')
+
+
+def _spoken_number(n: int) -> str:
+    if n < 20:
+        return _ONES[n]
+    if n >= 100:
+        raise ValueError('Expected a number under 100.')
+    return _TENS[n//10] + (('-' + _ONES[n%10]) if n%10 else '')
+
+
+def spoken_year(year: int, decade: bool=False) -> str:
+    """Expand calendar years: 1967 => nineteen sixty-seven; 1960s => nineteen sixties."""
+    if not 1000 <= year <= 2099:
+        raise ValueError('Year outside supported narration range.')
+    if year < 2000:
+        century = _spoken_number(year//100)
+        suffix = year % 100
+        if decade and suffix in _DECADES:
+            return century + ' ' + _DECADES[suffix]
+        if suffix == 0:
+            return century + ' hundreds' if decade else century + ' hundred'
+        if suffix < 10:
+            return century + ' oh ' + _spoken_number(suffix)
+        return century + ' ' + _spoken_number(suffix)
+    suffix = year % 100
+    if decade and suffix == 0:
+        return 'two thousands'
+    if decade and suffix in _DECADES:
+        return 'twenty ' + _DECADES[suffix]
+    if year < 2010:
+        return 'two thousand' + (' ' + _spoken_number(suffix) if suffix else '')
+    if suffix == 0:
+        return 'twenty-one hundred'
+    return 'twenty ' + _spoken_number(suffix)
+
+
+def load_pronunciations() -> dict[str,str]:
+    result = dict(DEFAULT_PRONUNCIATIONS)
+    if PRONUNCIATION_FILE.is_file():
+        try:
+            data=json.loads(PRONUNCIATION_FILE.read_text(encoding='utf-8'))
+            if not isinstance(data,dict):
+                raise ValueError('Pronunciation guide must contain a JSON object.')
+            if len(data)>120:
+                raise ValueError('Pronunciation guide exceeds 120 entries.')
+            for key,value in data.items():
+                if not isinstance(key,str) or not isinstance(value,str):
+                    raise ValueError('Pronunciation entries must have text keys and values.')
+                if not 1 <= len(key.strip()) <= 100 or not 1 <= len(value.strip()) <= 150:
+                    raise ValueError('Pronunciation entries cannot be blank or excessively long.')
+                result[key.strip()]=value.strip()
+        except (OSError,ValueError) as exc:
+            raise ValueError('Invalid pronunciation guide. Open Narrate > Pronunciation guide: '+str(exc)) from exc
+    return result
+
+
+def normalize_for_speech(text: str) -> str:
+    """Speech-only year and pronunciation adjustments without touching on-screen captions."""
+    if not isinstance(text,str):
+        raise TypeError('Narration must be text.')
+    text=_YEAR_PATTERN.sub(lambda m: spoken_year(int(m.group(1)),bool(m.group(2))),text)
+    pronunciations=load_pronunciations()
+    for spelling,spoken in sorted(pronunciations.items(),key=lambda kv:-len(kv[0])):
+        text=re.sub(r'(?<!\w)'+re.escape(spelling)+r'(?!\w)',
+                    lambda m,word=spoken: word,text,flags=re.IGNORECASE)
+    return text
 
 
 class PlaybackError(RuntimeError):
@@ -315,13 +400,14 @@ def speak(text: str, out: Path, voice: str, speed: float = 0.97, tts=None) -> Pa
         raise ValueError('Narration speed must be between 0.75 and 1.25')
     check_voice(voice)
     engine, name = parse_voice(voice)
+    spoken_text = normalize_for_speech(text)
     if engine == 'qwen':
         from qwen_voice import clone
-        clone(name,text,out,model=tts)
+        clone(name,spoken_text,out,model=tts)
     elif engine == 'kokoro':
-        _speak_kokoro(text, out, name, speed, tts=tts)
+        _speak_kokoro(spoken_text, out, name, speed, tts=tts)
     else:
-        _speak_piper(text, out, name)
+        _speak_piper(spoken_text, out, name)
     with wave.open(str(out), 'rb') as generated:
         if generated.getnframes() <= 0:
             raise RuntimeError('Narration audio is empty')
@@ -329,12 +415,12 @@ def speak(text: str, out: Path, voice: str, speed: float = 0.97, tts=None) -> Pa
 
 
 def digest(text: str, voice: str, speed: float) -> str:
-    return hashlib.sha256(f'2.1\0{voice}\0{speed:.3f}\0{text.strip()}'.encode('utf-8')).hexdigest()
+    return hashlib.sha256(f'4.2\0{voice}\0{speed:.3f}\0{normalize_for_speech(text.strip())}'.encode('utf-8')).hexdigest()
 
 
 def generate_sample(voice: str, speed: float = 0.97) -> Path:
     suffix = f'{int(speed * 100):03d}'
-    path = AUDIO_DIR / 'voice_previews' / f'{voice_slug(voice)}_{suffix}.wav'
+    path = AUDIO_DIR / 'voice_previews' / f'{voice_slug(voice)}_{suffix}_pron2.wav'
     if not path.is_file():
         speak(SAMPLE_TEXT, path, voice, speed)
     print('VOICE PREVIEW READY: ' + str(path), flush=True)
