@@ -39,7 +39,7 @@ jobs:
           from fact_checker_ui import FactCheckDialog
           app = App()
           app.update_idletasks()
-          assert len(app.tabs.tabs()) == 5
+          assert len(app.tabs.tabs()) == 6
           voice = VoiceStudio(app)
           voice.update_idletasks()
           voice.close()
@@ -64,7 +64,7 @@ jobs:
           assert gui.SOFT_LIGHT and production_ui.SOFT_LIGHT
           assert voice_studio_ui.SOFT_LIGHT and fact_checker_ui.SOFT_LIGHT
           app=gui.App()
-          assert len(app.tabs.tabs())==5
+          assert len(app.tabs.tabs())==6
           window=production_ui.ProductionStudio(app)
           assert len(window.tabs.tabs())==3
           assert window.want_full.get() and window.want_shorts.get() and window.want_tiktok.get()
@@ -93,7 +93,7 @@ jobs:
           prod=ProductionStudio(app)
           prod.geometry('710x500')
           prod.update()
-          assert len(app._page_scroll_canvases)==5
+          assert len(app._page_scroll_canvases)==6
           assert len(prod._page_scroll_canvases)==3
           for owner in (app,prod):
               for index,canvas in enumerate(owner._page_scroll_canvases):
@@ -160,8 +160,8 @@ jobs:
           from production_engine import OllamaSetupError
           app=App()
           app.update()
-          assert len(app.tabs.tabs())==5
-          assert len(app.nav_buttons)==5
+          assert len(app.tabs.tabs())==6
+          assert len(app.nav_buttons)==6
           assert app.topic_var.get()==''
           assert app.want_full.get() and app.want_shorts.get() and app.want_tiktok.get()
           assert app.visual_style_var.get()=='Hybrid documentary'
@@ -180,10 +180,21 @@ jobs:
                   app.start_production()
                   setup.assert_called_once()
                   assert callable(setup.call_args.kwargs['on_select'])
+          # The sidebar must never jump ahead of unfinished prerequisites.
+          app._go(3);app.update()
+          assert app.tabs.index(app.tabs.select())==0
+          assert app.nav_buttons[3].cget('state')=='disabled'
+          app._unlock(1)
           app._go(1);app.update()
-          assert app.section_title.get()=='Voice studio'
+          assert app.section_title.get()=='Research & verify the script'
+          app._go(3);app.update()
+          assert app.tabs.index(app.tabs.select())==1
+          app._unlock(2)
           app._go(2);app.update()
-          assert app.section_title.get()=='Review and render'
+          assert app.section_title.get()=='Record the narration'
+          app._unlock(3)
+          app._go(3);app.update()
+          assert app.section_title.get()=='Visuals & final render'
           app.output_aspect.set('short')
           app._sync_output_aspect()
           assert app.short.get() and not app.wide.get()
