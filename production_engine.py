@@ -305,6 +305,78 @@ def change(job_id:str, **fields)->dict:
         return old
 
 
+# The queue is an inbox, not a permanent pile of finished jobs.
+# Drafts automatically advance into Review; completed videos go to Library.
+ACTIVE_JOB_STATES = frozenset(
+    ('queued','needs_model','failed','researching','drafting',
+     'gathering_media','rendering'))
+REVIEW_JOB_STATES = frozenset(('awaiting_review','ready'))
+COMPLETED_JOB_STATES = frozenset(('finished',))
+RUNNING_JOB_STATES = frozenset(('researching','drafting','gathering_media','rendering'))
+
+
+def project_stage(job:dict)->str:
+    """User-visible lifecycle stage, independent of how many queue runs exist."""
+    if job.get('archived'):
+        return 'archive'
+    status=job.get('status','queued')
+    if status in REVIEW_JOB_STATES:
+        return 'review'
+    if status in COMPLETED_JOB_STATES:
+        return 'archive'
+    return 'queue'
+
+
+def list_stage_jobs(stage:str)->list[dict]:
+    if stage not in ('queue','review','archive'):
+        raise ValueError('Unknown production stage.')
+    return [job for job in list_jobs() if project_stage(job)==stage]
+
+
+def archive_job(job_id:str)->dict:
+    """Hide a completed or reviewable production from active views.
+
+    The job record, source research, scripts, audio and video remain available.
+    """
+    job=get_job(job_id)
+    if job['status'] in RUNNING_JOB_STATES:
+        raise ValueError('Cannot archive an actively processing production.')
+    if job['status'] not in REVIEW_JOB_STATES | COMPLETED_JOB_STATES:
+        raise ValueError('Only reviewed or completed drafts can be archived.')
+    return change(job_id,archived=True,archived_at=now())
+
+
+def restore_job(job_id:str)->dict:
+    job=get_job(job_id)
+    if not job.get('archived'):
+        return job
+    return change(job_id,archived=False,archived_at=None)
+
+
+def remove_queue_job(job_id:str)->dict:
+    """Delete tracking metadata only, never original episode or media assets.
+
+    Running work must finish or fail before deletion; no in-flight process
+    should have its queue record removed from underneath it.
+    """
+    with LOCK:
+        job=get_job(job_id)
+        if job.get('status') in RUNNING_JOB_STATES:
+            raise ValueError('This production is still processing. Finish or stop it before deleting.')
+        path=job_path(job_id)
+        path.unlink()
+        return job
+
+
+def clear_completed_from_queue()->int:
+    """Archive completed projects without deleting footage or scripts."""
+    ids=[job['id'] for job in list_jobs()
+         if job.get('status') in COMPLETED_JOB_STATES and not job.get('archived')]
+    for job_id in ids:
+        archive_job(job_id)
+    return len(ids)
+
+
 OLLAMA_BASE = "http://127.0.0.1:11434"
 RECOMMENDED_TEXT_MODEL = "qwen3:4b"
 MODEL_PREFERENCE = ("qwen3:8b","qwen3:4b","qwen2.5:7b","gemma3:4b",
