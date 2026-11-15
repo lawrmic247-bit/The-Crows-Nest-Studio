@@ -247,6 +247,14 @@ class InlineFactReview(tk.Frame):
     def __init__(self,parent,*,on_saved=None):
         super().__init__(parent,bg=DARK)
         self.on_saved=on_saved
+        style=ttk.Style(self)
+        style.configure('Evidence.Treeview',background=PANEL,fieldbackground=PANEL,
+                        foreground=LIGHT,font=('Segoe UI',10),rowheight=31)
+        style.configure('Evidence.Treeview.Heading',background=HEADING_BG,
+                        foreground=LIGHT,font=('Segoe UI',10,'bold'))
+        style.map('Evidence.Treeview',
+                  background=[('selected','#2E4C53')],
+                  foreground=[('selected','#ffffff')])
         self.report=None
         self.slug=None
         self.source_leads=None
