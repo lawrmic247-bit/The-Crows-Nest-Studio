@@ -196,6 +196,49 @@ jobs:
           app.close()
           print('Film brief, automatic model setup, navigation, output choice and fresh-project reset passed.')
           PY
+      - name: Verify queue to editor handoff without window clutter
+        run: |
+          xvfb-run -a python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from unittest.mock import patch
+          import production_engine as engine
+          from production_ui import ProductionStudio
+          from gui import App
+          with tempfile.TemporaryDirectory() as tmp:
+              with patch.object(engine,'QUEUE',Path(tmp)/'queue'):
+                  app=App()
+                  studio=ProductionStudio(app,on_load=lambda path,jid:True)
+                  waiting=engine.create_job('The documented history of Navy hospital corpsmen')
+                  studio.stage_view.set('Needs work')
+                  studio.refresh(waiting['id'])
+                  assert waiting['id'] in studio.list.get_children()
+                  assert studio.primary_btn.cget('text')=='RUN / RETRY PRODUCTION'
+                  manifest=Path(tmp)/'episode.json'
+                  manifest.write_text('{"title":"Historical documentary"}',encoding='utf-8')
+                  engine.change(waiting['id'],status='awaiting_review',
+                                manifest=str(manifest),
+                                variants={'full':str(manifest)})
+                  studio.stage_view.set('Ready for review')
+                  studio.refresh(waiting['id'])
+                  assert waiting['id'] in studio.list.get_children()
+                  assert waiting['id'] not in [j['id'] for j in engine.list_stage_jobs('queue')]
+                  assert studio.primary_btn.cget('text')=='CONTINUE IN MAIN STUDIO'
+                  studio.open_draft()
+                  assert not studio.winfo_exists()
+                  assert engine.get_job(waiting['id'])['archived']
+                  second=ProductionStudio(app,on_load=lambda path,jid:True)
+                  another=engine.create_job('Naval medical service in the Pacific theater')
+                  second.stage_view.set('Needs work')
+                  second.refresh(another['id'])
+                  with patch('production_ui.messagebox.askyesno',return_value=True):
+                      second.delete_selected()
+                  assert not engine.list_jobs() or all(
+                      j['id']!=another['id'] for j in engine.list_jobs())
+                  second.destroy()
+                  app.close()
+          print('Ready-review handoff closes queue, and deleting entries preserves project files.')
+          PY
       - name: Capture redesigned main window for visual QA
         run: |
           xvfb-run -a -s "-screen 0 1280x1024x24" python - <<'PY'
