@@ -129,11 +129,17 @@ def video_asset(scene, idx, directory, wh):
     return p
 
 
-def mk_scene(scene,idx,wav,duration,visual,out,wh,fps):
+def mk_scene(scene,idx,wav,duration,visual,out,wh,fps,visual_style='archival'):
     w,h=wh
     vf=f'scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,fps={fps},format=yuv420p'
     ext=visual.suffix.lower()
     if ext in {'.png','.jpg','.jpeg','.webp'}:
+        if visual_style in ('motion','hybrid'):
+            # Restrained Ken Burns movement on authentic photos; no invented footage.
+            vf=(f'scale={w}:{h}:force_original_aspect_ratio=increase,'
+                f'crop={w}:{h},'
+                f"zoompan=z='min(zoom+0.0005,1.12)':d=1:s={w}x{h}:fps={fps},"
+                f'format=yuv420p')
         a=['ffmpeg','-nostdin','-hide_banner','-loglevel','error','-y','-loop','1','-framerate',str(fps),'-i',str(visual)]
     else:
         a=['ffmpeg','-nostdin','-hide_banner','-loglevel','error','-y','-stream_loop','-1','-i',str(visual)]
@@ -170,7 +176,8 @@ def render(manifest:Path,fmt:str,*,silent_demo=False,voice_model=DEFAULT_VOICE,c
             visual=video_asset(scene,i,work,wh)
             clip=work/f'clip_{i:02}.mp4'
             print(f'Rendering scene {i}/{len(data["scenes"])} ({duration:.1f}s): {scene.get("heading", "")}',flush=True)
-            mk_scene(scene,i,audio,duration,visual,clip,wh,fps)
+            mk_scene(scene,i,audio,duration,visual,clip,wh,fps,
+                     visual_style=data.get('visual_style','archival'))
             durs.append(duration);clips.append(clip)
         concat=work/'list.txt';concat.write_text(''.join(f"file '{str(p).replace(chr(39),chr(39)+chr(92)+chr(39)+chr(39))}'\n" for p in clips),encoding='utf-8')
         joined=work/'joined.mp4'
@@ -199,7 +206,7 @@ def render(manifest:Path,fmt:str,*,silent_demo=False,voice_model=DEFAULT_VOICE,c
             if captions and 'subtitles' in str(e).lower():
                 raise RuntimeError('Your FFmpeg build needs libass to burn subtitles. Re-run with --no-burn-captions; an SRT will still be produced.\n'+str(e))
             raise
-    publication={'title':data.get('title'),'summary':data.get('description'),'aiDisclosure':True,'officialAffiliation':False,'sources':data.get('sources',[]),'format':fmt,'video':out.name,'subtitle':subtitles.name,'copyrightChecklist':'Human review of all source footage required','factCheckReport':str(fact_path) if fact_path else 'silent-demo; not fact-checked'}
+    publication={'title':data.get('title'),'summary':data.get('description'),'aiDisclosure':True,'officialAffiliation':False,'sources':data.get('sources',[]),'format':fmt,'visual_style':data.get('visual_style','archival'),'video':out.name,'subtitle':subtitles.name,'copyrightChecklist':'Human review of all source footage required','factCheckReport':str(fact_path) if fact_path else 'silent-demo; not fact-checked'}
     out.with_suffix('.publish.json').write_text(json.dumps(publication,indent=2),encoding='utf-8')
     print(f'FINISHED: {out} ({probe_duration(out):.1f}s). Captions: {subtitles}')
     return out
