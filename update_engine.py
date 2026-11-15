@@ -31,7 +31,7 @@ TAG_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)$')
 MAX_DOWNLOAD = 100 * 1024 * 1024
 ALLOWED_CODE = {
     'VERSION', 'gui.py', 'studio.py', 'narration.py', 'desktop_launcher.py',
-    'draft_with_ollama.py', 'production_engine.py', 'production_ui.py', 'voice_profiles.py', 'voice_studio_ui.py', 'qwen_voice.py', 'update_engine.py', 'diagnostics.py',
+    'draft_with_ollama.py', 'production_engine.py', 'production_ui.py', 'story_variants.py', 'local_video.py', 'voice_profiles.py', 'voice_studio_ui.py', 'qwen_voice.py', 'update_engine.py', 'diagnostics.py',
     'fact_checker.py', 'fact_checker_ui.py',
     'requirements.txt', 'README.md', 'README_DESKTOP.md', 'STUDIO_3_0_GUIDE.md', 'STUDIO_4_0_GUIDE.md',
     'Install_Desktop_App.ps1', 'Install_Desktop_App.bat', 'Connect_GitHub_Once.ps1', 'Connect_GitHub_Once.bat',
