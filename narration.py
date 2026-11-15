@@ -451,9 +451,16 @@ def digest(text: str, voice: str, speed: float) -> str:
     return hashlib.sha256(f'4.2\0{voice}\0{speed:.3f}\0{normalize_for_speech(text.strip())}'.encode('utf-8')).hexdigest()
 
 
-def generate_sample(voice: str, speed: float = 0.97) -> Path:
+def sample_preview_path(voice: str, speed: float = 0.97) -> Path:
+    """Cache preview by voice, pace, and current pronunciation dictionary."""
     suffix = f'{int(speed * 100):03d}'
-    path = AUDIO_DIR / 'voice_previews' / f'{voice_slug(voice)}_{suffix}_pron2.wav'
+    rules=json.dumps(load_pronunciations(),sort_keys=True,ensure_ascii=False)
+    checksum=hashlib.sha256(rules.encode('utf-8')).hexdigest()[:10]
+    return AUDIO_DIR / 'voice_previews' / f'{voice_slug(voice)}_{suffix}_pron2_{checksum}.wav'
+
+
+def generate_sample(voice: str, speed: float = 0.97) -> Path:
+    path = sample_preview_path(voice,speed)
     if not path.is_file():
         speak(SAMPLE_TEXT, path, voice, speed)
     print('VOICE PREVIEW READY: ' + str(path), flush=True)
