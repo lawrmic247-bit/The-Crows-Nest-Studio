@@ -59,6 +59,55 @@ def distill_story(scenes:list[dict],target:str)->list[dict]:
     return [{"heading":heading,"narration":text} for heading,text in chapters if text.strip()]
 
 
+def social_story(scenes:list[dict],target:str,*,rewrite=None)->list[dict]:
+    """Optional Ollama storytelling pass; safe extraction when unavailable.
+
+    Human fact-check and rights review always remain mandatory. The generated
+    version is not treated as a verified historical source.
+    """
+    fallback=distill_story(scenes,target)
+    if rewrite is None:
+        return fallback
+    full=" ".join(str(scene.get("narration","")) for scene in scenes)
+    if len(full)<350:
+        return fallback
+    words=110 if target=="shorts" else 165
+    prompt=(
+        "Rewrite an EXISTING sourced documentary into one exciting but factually "
+        "faithful vertical social video. Target "+str(words)+" spoken words. "
+        "First sentence: a punchy true hook. Middle: immediate stakes and context. "
+        "End: what happened and why it matters. Use THREE concise paragraphs only, "
+        "without titles or hashtags. Never invent a quote, person, casualty, place, "
+        "date, numerical detail, event, or outcome. Do not embellish visuals as history. "
+        "If a detail is not in the source, OMIT it. Keep the chronology and identities accurate. "
+        "Original, UNVERIFIED documentary (rewrite only what it says):\n"+full[:16000]
+    )
+    try:
+        result=rewrite(prompt,target)
+        if not isinstance(result,str):
+            return fallback
+        paragraphs=[p.strip() for p in re.split(r"\n\s*\n+",result) if p.strip()]
+        clean=" ".join(paragraphs)
+        count=len(clean.split())
+        bounds=(68,128) if target=="shorts" else (100,188)
+        if not (bounds[0]<=count<=bounds[1]):
+            return fallback
+        # Reject any new numeric claims; even this check is not fact verification.
+        source_nums=set(re.findall(r"\b\d+(?:,\d{3})*\b",full))
+        new_nums=set(re.findall(r"\b\d+(?:,\d{3})*\b",clean))
+        if not new_nums.issubset(source_nums):
+            return fallback
+        parts=paragraphs if len(paragraphs)==3 else [
+            " ".join(clean.split()[:count//3]),
+            " ".join(clean.split()[count//3:2*count//3]),
+            " ".join(clean.split()[2*count//3:])
+        ]
+        return [{"heading":heading,"narration":part}
+                for heading,part in zip(("The Hook","The Stakes","The Payoff"),parts)]
+    except (RuntimeError,OSError,ValueError):
+        return fallback
+
+
 def available_outputs(formats):
     values=("full","shorts","tiktok")
     if not isinstance(formats,(list,tuple)) or not formats:
