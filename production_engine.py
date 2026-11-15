@@ -543,26 +543,38 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
         raise
 
 
-def prepare_for_render(job_id:str, *,rights_confirmed:bool=False)->Path:
+def prepare_for_render(job_id:str, *,rights_confirmed:bool=False,deliverable:str|None=None)->Path:
     """Human consent and source-led fact check required to release publishable rendering."""
     job=get_job(job_id)
     if job['status'] not in ('awaiting_review','ready','finished'):
         raise ValueError('The production draft is not ready for review.')
     if not rights_confirmed:raise ValueError('Confirm asset rights and attribution after reviewing media_credits.json.')
-    path=Path(job['manifest']);data=json.loads(path.read_text(encoding='utf-8'))
+    variants=job.get('variants') or {}
+    if deliverable is not None:
+        if deliverable not in variants:
+            raise ValueError('This job has no output named '+str(deliverable))
+        path=Path(variants[deliverable])
+    else:
+        path=Path(job['manifest'])
+    data=json.loads(path.read_text(encoding='utf-8'))
     from fact_checker import require_clearance
     require_clearance(data['slug'],'\n\n'.join(s['narration'] for s in data['scenes']))
     data['approved']=True;atomic_json(path,data)
-    change(job_id,status='ready',progress='Fact checks and media rights confirmed. Ready to narrate and render.')
+    reviewed=dict(job.get('variant_reviews') or {})
+    reviewed[data.get('deliverable','full')]=True
+    change(job_id,status='ready',variant_reviews=reviewed,
+           progress='Source checks and media rights confirmed for '+data.get('deliverable','full')+'. Ready to render.')
     return path
 
 
-def render_ready(job_id:str,*,rights_confirmed=False,render_fn=None)->list[Path]:
-    manifest=prepare_for_render(job_id,rights_confirmed=rights_confirmed)
+def render_ready(job_id:str,*,rights_confirmed=False,render_fn=None,deliverable=None)->list[Path]:
+    manifest=prepare_for_render(job_id,rights_confirmed=rights_confirmed,deliverable=deliverable)
     job=get_job(job_id)
     if render_fn is None:
         from studio import render as render_fn
-    fmts=['short','wide'] if job['format']=='both' else [job['format']]
+    data=json.loads(manifest.read_text(encoding='utf-8'))
+    kind=data.get('deliverable','full')
+    fmts=['wide'] if kind=='full' else ['short']
     change(job_id,status='rendering',progress='Rendering '+','.join(fmts))
     try:
         outputs=[render_fn(manifest,fmt,voice_model=job['voice']) for fmt in fmts]
