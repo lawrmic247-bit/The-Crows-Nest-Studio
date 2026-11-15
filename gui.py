@@ -25,17 +25,23 @@ VOICE_OPTIONS = {
     'Piper Lessac — basic (legacy)': 'en_US-lessac-medium',
 }
 
-DISPLAY_MODE = update_engine.load_settings().get('appearance','slate')
+DISPLAY_MODE = update_engine.load_settings().get('appearance', 'slate')
 SOFT_LIGHT = DISPLAY_MODE == 'soft_light'
-GOLD = '#477669' if SOFT_LIGHT else '#9fc5bc'
-INK = '#f2f5f2' if SOFT_LIGHT else '#202a33'
-PANEL = '#dfe7e2' if SOFT_LIGHT else '#303d49'
-CREAM = '#23382f' if SOFT_LIGHT else '#e0e6e8'
-MUTED = '#50695f' if SOFT_LIGHT else '#bac7ce'
-FIELD_BG = '#ffffff' if SOFT_LIGHT else '#374653'
-TAB_BG = '#537566' if SOFT_LIGHT else '#48655e'
-ACTIVE_BG = '#5d8877' if SOFT_LIGHT else '#bcd8cf'
-ACTIVE_FG = '#ffffff' if SOFT_LIGHT else INK
+# One visual system for the documentary production workspace.
+INK = '#F1F4F4' if SOFT_LIGHT else '#0C121B'
+PANEL = '#FFFFFF' if SOFT_LIGHT else '#182330'
+NAV_BG = '#E2EAE8' if SOFT_LIGHT else '#101A26'
+FIELD_BG = '#FFFFFF' if SOFT_LIGHT else '#223141'
+SURFACE_2 = '#EAF0EE' if SOFT_LIGHT else '#223343'
+BORDER = '#CAD7D3' if SOFT_LIGHT else '#314152'
+CREAM = '#253640' if SOFT_LIGHT else '#EDF2F4'
+MUTED = '#60747C' if SOFT_LIGHT else '#A1B1BD'
+GOLD = '#2F6758' if SOFT_LIGHT else '#D7B47B'
+CTA_FG = '#FFFFFF' if SOFT_LIGHT else '#10202A'
+TAB_BG = '#DAE5DF' if SOFT_LIGHT else '#2E4C53'
+ACTIVE_BG = '#265247' if SOFT_LIGHT else '#EAC68D'
+ACTIVE_FG = '#FFFFFF' if SOFT_LIGHT else '#10202A'
+OK = '#2A785D' if SOFT_LIGHT else '#89CBAA'
 
 
 def python_bin() -> str:
@@ -90,26 +96,96 @@ class App(tk.Tk):
         style.configure('TCheckbutton',font=('Segoe UI',11),background=INK,foreground=CREAM)
         style.map('TCheckbutton',background=[('active',INK)],
                   foreground=[('active',CREAM)])
+        style.configure('Studio.Primary.TButton',font=('Segoe UI',10,'bold'),
+                        padding=(18,12),background=GOLD,foreground=CTA_FG,
+                        borderwidth=0)
+        style.map('Studio.Primary.TButton',
+                  background=[('active',ACTIVE_BG),('disabled',BORDER)],
+                  foreground=[('active',ACTIVE_FG),('disabled',MUTED)])
+        style.configure('Studio.Sidebar.TButton',font=('Segoe UI',10,'bold'),
+                        padding=(15,11),background=SURFACE_2,
+                        foreground=CREAM,borderwidth=0)
+        style.map('Studio.Sidebar.TButton',background=[('active',TAB_BG)])
+        style.layout('Studio.TNotebook.Tab', [])
         style.configure('Studio.TNotebook',background=INK,borderwidth=0)
         style.configure('Studio.TNotebook.Tab',font=('Segoe UI',11),padding=(22,13),
                         background=PANEL,foreground=CREAM)
         style.map('Studio.TNotebook.Tab',background=[('selected',TAB_BG)],
                   foreground=[('selected','#ffffff')])
 
-        header=tk.Frame(self,bg=INK,padx=24,pady=16)
-        header.pack(fill='x')
-        tk.Label(header,text="The Crow's Nest",bg=INK,fg=CREAM,
-                 font=('Segoe UI',23,'bold')).pack(anchor='w')
-        tk.Label(header,text='One topic → Full documentary + YouTube Short + TikTok. Human-reviewed before publishing.',
-                 bg=INK,fg=MUTED,font=('Segoe UI',11)).pack(anchor='w',pady=(3,0))
+        self._section_names=[
+            ('01 / STORY DEVELOPMENT','New production'),
+            ('02 / NARRATION','Voice studio'),
+            ('03 / VERIFICATION','Review and render'),
+            ('04 / FINAL SCREENING','Preview and publish'),
+            ('05 / WORKSPACE','System and preferences'),
+        ]
+        shell=tk.Frame(self,bg=INK)
+        shell.pack(fill='both',expand=True)
 
-        self.tabs=ttk.Notebook(self,style='Studio.TNotebook')
-        self.tabs.pack(fill='both',expand=True,padx=20,pady=(0,7))
-        self.step_hint=tk.StringVar(value='Start by creating all three formats from one researched topic.')
-        tk.Label(self,textvariable=self.step_hint,bg=INK,fg=MUTED,
+        sidebar=tk.Frame(shell,bg=NAV_BG,width=246)
+        sidebar.pack(side='left',fill='y')
+        sidebar.pack_propagate(False)
+        mark=tk.Frame(sidebar,bg=NAV_BG,padx=23,pady=28)
+        mark.pack(fill='x')
+        tk.Label(mark,text='THE CROW\'S NEST',bg=NAV_BG,fg=CREAM,
+                 font=('Segoe UI',16,'bold'),anchor='w').pack(fill='x')
+        tk.Label(mark,text='DOCUMENTARY PRODUCTION STUDIO',
+                 bg=NAV_BG,fg=GOLD,font=('Segoe UI',9,'bold'),
+                 anchor='w').pack(fill='x',pady=(7,0))
+        tk.Frame(sidebar,bg=BORDER,height=1).pack(fill='x',padx=22,pady=(0,24))
+        tk.Label(sidebar,text='PRODUCTION PIPELINE',bg=NAV_BG,fg=MUTED,
+                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',padx=24,pady=(0,9))
+        self.nav_buttons=[]
+        for index,label in enumerate((
+            '01    NEW PRODUCTION',
+            '02    NARRATION',
+            '03    FACTS & RENDER',
+            '04    SCREENING ROOM',
+            '05    SETTINGS',
+        )):
+            button=tk.Button(sidebar,text=label,anchor='w',
+                      relief='flat',borderwidth=0,highlightthickness=0,
+                      bg=NAV_BG,fg=MUTED,activebackground=SURFACE_2,
+                      activeforeground=CREAM,font=('Segoe UI',10,'bold'),
+                      padx=24,pady=15,cursor='hand2',
+                      command=lambda i=index:self._go(i))
+            button.pack(fill='x',padx=7,pady=2)
+            self.nav_buttons.append(button)
+        tk.Frame(sidebar,bg=NAV_BG).pack(fill='both',expand=True)
+        tk.Frame(sidebar,bg=BORDER,height=1).pack(fill='x',padx=20,pady=(0,16))
+        tk.Label(sidebar,text='PROJECT LIBRARY',bg=NAV_BG,fg=MUTED,
+                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',padx=24)
+        ttk.Button(sidebar,text='Open films and queue',
+                   style='Studio.Sidebar.TButton',
+                   command=self.open_production_studio).pack(fill='x',padx=20,pady=(9,18))
+        tk.Label(sidebar,text='VERSION '+update_engine.VERSION+'  /  LOCAL FIRST',
+                 bg=NAV_BG,fg=MUTED,font=('Segoe UI',8),
+                 anchor='w').pack(fill='x',padx=24,pady=(0,22))
+
+        workspace=tk.Frame(shell,bg=INK)
+        workspace.pack(side='left',fill='both',expand=True)
+        chrome=tk.Frame(workspace,bg=INK,padx=26,pady=20)
+        chrome.pack(fill='x')
+        headings=tk.Frame(chrome,bg=INK)
+        headings.pack(side='left',fill='x',expand=True)
+        self.section_label=tk.StringVar(value='01 / STORY DEVELOPMENT')
+        self.section_title=tk.StringVar(value='New production')
+        tk.Label(headings,textvariable=self.section_label,bg=INK,fg=GOLD,
+                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x')
+        tk.Label(headings,textvariable=self.section_title,bg=INK,fg=CREAM,
+                 font=('Segoe UI',24,'bold'),anchor='w').pack(fill='x',pady=(3,0))
+        ttk.Button(chrome,text='+ NEW FILM',style='Studio.Primary.TButton',
+                   command=lambda:self._go(0)).pack(side='right',padx=(15,0))
+        tk.Frame(workspace,bg=BORDER,height=1).pack(fill='x',padx=25,pady=(0,7))
+        # Keep the notebook as the navigation state machine, but use a proper
+        # production-sidebar rather than a second set of tabs above every page.
+        self.tabs=ttk.Notebook(workspace,style='Studio.TNotebook')
+        self.tabs.pack(fill='both',expand=True,padx=16,pady=(0,5))
+        self.step_hint=tk.StringVar(value='Start with a topic. Studio gathers research and builds editable drafts.')
+        tk.Label(workspace,textvariable=self.step_hint,bg=INK,fg=MUTED,
                  font=('Segoe UI',10),anchor='w',justify='left',
-                 wraplength=1060).pack(fill='x',padx=24,pady=(0,10))
-
+                 wraplength=940).pack(fill='x',padx=28,pady=(5,15))
         self._page_scroll_canvases=[]
         self._page_scroll_containers=[]
         def page(label):
@@ -326,7 +402,8 @@ class App(tk.Tk):
             'Adjust the display, update Studio, or inspect its activity log.'
         ]
         self.tabs.bind('<<NotebookTabChanged>>',
-            lambda event:self.step_hint.set(hints[self.tabs.index(self.tabs.select())]))
+            lambda event:(self._sync_navigation(event),
+                self.step_hint.set(hints[self.tabs.index(self.tabs.select())])))
         for number in range(1,6):
             self.bind_all(f'<Control-Key-{number}>',
                 lambda event,idx=number-1:self.tabs.select(idx))
@@ -335,10 +412,29 @@ class App(tk.Tk):
         self.bind_all('<MouseWheel>',self._page_mouse_wheel,add='+')
         self.bind_all('<Button-4>',self._page_mouse_wheel,add='+')
         self.bind_all('<Button-5>',self._page_mouse_wheel,add='+')
+        self._sync_navigation()
         self.after(1800,self.auto_update_check)
         self.after(150,self.poll)
         self.after(10000,self.poll_chat_inbox)
         self.protocol('WM_DELETE_WINDOW',self.close)
+
+    def _go(self,index:int):
+        if 0<=index<len(self.tabs.tabs()):
+            self.tabs.select(index)
+
+    def _sync_navigation(self,event=None):
+        try:
+            index=self.tabs.index(self.tabs.select())
+            label,title=self._section_names[index]
+            self.section_label.set(label)
+            self.section_title.set(title)
+            for i,button in enumerate(self.nav_buttons):
+                chosen=i==index
+                button.configure(bg=SURFACE_2 if chosen else NAV_BG,
+                                 fg=CREAM if chosen else MUTED,
+                                 activebackground=SURFACE_2)
+        except (tk.TclError,IndexError):
+            pass
 
     def _page_mouse_wheel(self,event):
         # Scroll the currently visible page without stealing wheel events from
