@@ -500,6 +500,10 @@ def pull_local_model(model:str=RECOMMENDED_TEXT_MODEL,*,progress=None,request=No
 def prepare_job_model(job_id:str,*, installed:list[str]|None=None)->str:
     """Resolve an installed model before any online research or drafting."""
     job=get_job(job_id)
+    installed=list_local_models() if installed is None else installed
+    if job.get('model_locked') and job.get('model') not in installed:
+        raise OllamaSetupError('Selected writing model '+str(job.get('model',''))+
+             ' is no longer installed. Return to Step 1 and explicitly choose an available model.')
     selected=select_local_model(job.get("model",""),installed=installed)
     if selected!=job.get("model"):
         change(job_id,model=selected,
