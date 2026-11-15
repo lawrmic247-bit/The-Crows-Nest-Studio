@@ -226,7 +226,7 @@ class ProductionStudio(tk.Toplevel):
               title='Choose ComfyUI workflow in API JSON format',
               filetypes=[('API workflow JSON','*.json')])
         if not file:return
-        from local_video import load_workflow,LocalVideoError
+        from studio import load_workflow,LocalVideoError
         try:
             load_workflow(Path(file))
             self.workflow_path.set(file)
@@ -238,7 +238,7 @@ class ProductionStudio(tk.Toplevel):
             messagebox.showerror('Unsupported workflow',str(exc),parent=self)
 
     def check_local_video(self):
-        from local_video import status,LocalVideoError
+        from studio import status,LocalVideoError
         try:
             self._log(status())
             messagebox.showinfo('Local video generator',status(),parent=self)
