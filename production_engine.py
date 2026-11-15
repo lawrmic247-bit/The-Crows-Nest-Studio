@@ -588,7 +588,7 @@ def download_commons_images(job:dict, scenes:list[dict], *,fetch=None)->tuple[li
     return credits,sheet
 
 
-def make_research_leads(topic: str, dest: Path) -> Path:
+def make_research_leads(topic: str, dest: Path, report:dict|None=None) -> Path:
     """Write search leads; these do not constitute evidence of a factual claim."""
     domains = ('history.navy.mil', 'archives.gov', 'history.defense.gov',
                'navalhistory.org', 'si.edu', 'loc.gov')
@@ -604,6 +604,9 @@ def make_research_leads(topic: str, dest: Path) -> Path:
         'notice': ('Search results are not evidence. Open each original source, '
                    'confirm provenance and context, and record exact supporting text.'),
         'leads': leads,
+        'retrieved_sources':(report or {}).get('sources',[]),
+        'retrieved_at':(report or {}).get('retrieved_at',''),
+        'warnings':(report or {}).get('warnings',[]),
     })
     return dest
 
@@ -688,9 +691,22 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
         change(job_id,**fields)
         if progress:progress(text)
     try:
-        emit('drafting','Writing an unverified script with local Ollama...',0)
-        def update(i,n,text):emit('drafting',f'Scene {i}/{n}: {text}',i)
         prepared_file=job.get('prepared_scenes_file','')
+        research_report=None
+        if not prepared_file and not job.get('notes_file') and script_generator is generate_scenes:
+            emit('researching','Finding source leads from Wikipedia and the Library of Congress...',0)
+            research_report=discover_research(job['prompt'])
+            brief=research_brief(research_report)
+            research_file=QUEUE/(job_id+'_automatic_research.txt')
+            research_file.parent.mkdir(parents=True,exist_ok=True)
+            research_file.write_text(brief,encoding='utf-8')
+            job=change(job_id,notes_file=str(research_file),
+                       research_source_count=len(research_report['sources']))
+            if progress:
+                progress(f"Research leads: {len(research_report['sources'])} retrieved. "
+                         "Nothing is automatically verified.")
+        emit('drafting','Writing an unverified documentary draft using source leads...',0)
+        def update(i,n,text):emit('drafting',f'Scene {i}/{n}: {text}',i)
         if prepared_file:
             prepared_path=Path(prepared_file).resolve()
             if prepared_path.parent!=QUEUE.resolve() or prepared_path.name!=job_id+'_prepared.json':
@@ -728,7 +744,9 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
                                    'items':credits})
                 credit_path=str(sheet)
         title=job['title'].strip();slug=slugify(title)+'_'+job_id[:6]
-        research_leads=make_research_leads(job['prompt'],MEDIA_DIR/job_id/'research_leads.json')
+        research_leads=make_research_leads(job['prompt'],
+                                           MEDIA_DIR/job_id/'research_leads.json',
+                                           report=research_report)
         manifest={'slug':slug,'title':title,'description':'Independent, unofficial military documentary. Research and fact checking required before publication.',
                 'approved':False,'sources':[],'visual_style':job.get('visual_style','archival'),
                 'media_sources':[x.get('page_url','') for x in credits if x.get('page_url')],
