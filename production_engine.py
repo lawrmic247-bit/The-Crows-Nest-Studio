@@ -30,6 +30,8 @@ EPISODES = ROOT/'episodes'
 MEDIA_DIR = DATA/'media'
 LOCK = threading.RLock()
 FORMATS = ('short','wide','both')
+VISUAL_STYLES = ('archival','motion','hybrid')
+JOB_SCHEMA = 'crowsnest.job.v1'
 STATUSES = ('queued','drafting','gathering_media','awaiting_review','ready','rendering','finished','needs_model','failed')
 MAX_NOTES = 20000
 USER_AGENT = 'CrowsNestStudio/4.0 (+local documentary editor; contact via Wikimedia Commons)'
@@ -51,22 +53,71 @@ def atomic_json(path: Path, data: dict):
 
 
 def create_job(prompt:str, *, minutes:int=5, fmt:str='wide', model:str='qwen3:8b',
-               voice:str='kokoro:am_onyx', notes_file:str='', auto_media:bool=True) -> dict:
+               voice:str='kokoro:am_onyx', notes_file:str='', auto_media:bool=True,
+               visual_style:str='archival') -> dict:
     prompt=' '.join(prompt.strip().split())
     if not 12<=len(prompt)<=3000:raise ValueError('Prompt must contain 12–3000 characters.')
     if not 1<=int(minutes)<=30:raise ValueError('Duration must be 1–30 minutes.')
     if fmt not in FORMATS:raise ValueError('Choose short, wide, or both.')
+    if visual_style not in VISUAL_STYLES:raise ValueError('Choose archival, motion, or hybrid visual style.')
     if not re.fullmatch(r'[\w.:-]{2,100}',model):raise ValueError('Invalid local model name.')
     if notes_file and (not Path(notes_file).is_file() or Path(notes_file).stat().st_size>512_000):
         raise ValueError('Research notes must be an existing plain-text file under 500 KB.')
     ident=uuid.uuid4().hex[:12]
     job={'id':ident,'prompt':prompt,'title':prompt[:95],'minutes':int(minutes),'format':fmt,
          'model':model,'voice':voice,'notes_file':notes_file,'auto_media':bool(auto_media),
+          'visual_style':visual_style,
          'status':'queued','created_at':now(),'updated_at':now(),'error':'',
          'manifest':'','media_credits':'','research_leads':'','progress':'Waiting to run','script_words':0,
          'current_step':0}
     with LOCK:atomic_json(QUEUE/(ident+'.json'),job)
     return job
+
+
+def import_chatgpt_job(path: Path, *, source_folder: Path | None=None) -> dict:
+    """Import a private .json file from a locally synced ChatGPT job inbox.
+
+    No remote code, credentials, network requests, or automatic publishing.
+    An imported request remains in the normal queued/review-gated workflow.
+    """
+    path=Path(path).resolve()
+    if source_folder is not None and path.parent != Path(source_folder).resolve():
+        raise ValueError('Job file must be directly inside the configured inbox folder.')
+    if path.suffix.lower()!='.json' or not path.is_file() or path.stat().st_size>64_000:
+        raise ValueError('Select an existing ChatGPT job JSON under 64 KB.')
+    raw=json.loads(path.read_text(encoding='utf-8-sig'))
+    if not isinstance(raw,dict) or raw.get('schema')!=JOB_SCHEMA:
+        raise ValueError('Unrecognized ChatGPT job format. Expected crowsnest.job.v1.')
+    allowed={'schema','topic','title','minutes','format','visual_style','voice','auto_media','research_notes'}
+    if any(k not in allowed for k in raw):
+        raise ValueError('Unrecognized fields in ChatGPT job request.')
+    for job in list_jobs():
+        if job.get('source_file')==str(path):
+            return job
+    topic=raw.get('topic','')
+    if not isinstance(topic,str):
+        raise ValueError('Job topic must be text.')
+    minutes=raw.get('minutes',10)
+    if isinstance(minutes,bool) or not isinstance(minutes,int):
+        raise ValueError('Job length must be an integer.')
+    notes=raw.get('research_notes','')
+    if not isinstance(notes,str) or len(notes)>MAX_NOTES:
+        raise ValueError('Research notes cannot exceed 20,000 characters.')
+    job=create_job(topic,minutes=minutes,fmt=raw.get('format','wide'),
+                   voice=raw.get('voice','kokoro:am_onyx'),
+                   visual_style=raw.get('visual_style','archival'),
+                   auto_media=raw.get('auto_media',True))
+    if notes.strip():
+        notes_path=QUEUE/(job['id']+'_notes.txt')
+        notes_path.write_text(notes,encoding='utf-8')
+        job=change(job['id'],notes_file=str(notes_path))
+    title=raw.get('title','')
+    if title:
+        if not isinstance(title,str):
+            raise ValueError('Job title must be text.')
+        job=change(job['id'],title=title.strip()[:95] or topic[:95])
+    return change(job['id'],source_file=str(path),
+                  progress='Imported from your private ChatGPT inbox; awaiting draft generation.')
 
 
 def job_path(job_id:str)->Path:
@@ -163,7 +214,7 @@ def generate_scenes(job:dict, *,complete=None,ollama=ollama_generate)->list[dict
     notes_section=('RESEARCH NOTES (not automatically verified):\n'+notes[:9000]) if notes else 'NO VERIFIED RESEARCH NOTES PROVIDED.'
     plan=ollama(job['model'],
         f'Plan a military history documentary for The Crow\'s Nest, an INDEPENDENT UNOFFICIAL channel. '
-        f'Topic: {topic}\nDuration {mins} min. Write exactly {count} chronological or narrative section headings. '
+        f'Topic: {topic}\nDuration {mins} min. Visual style: {job.get("visual_style","archival")}. Write exactly {count} chronological or narrative section headings. '
         f'Output ONLY a JSON array of strings. No quotations or invented facts.\n{notes_section}',predict=550)
     headings=_headings_from_outline(plan,count)
     while len(headings)<count:headings.append(f'Part {len(headings)+1}: {_heading(topic[:50])}')
@@ -298,7 +349,7 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
         title=job['title'].strip();slug=slugify(title)+'_'+job_id[:6]
         research_leads=make_research_leads(job['prompt'],MEDIA_DIR/job_id/'research_leads.json')
         manifest={'slug':slug,'title':title,'description':'Independent, unofficial military documentary. Research and fact checking required before publication.',
-                'approved':False,'sources':[],
+                'approved':False,'sources':[],'visual_style':job.get('visual_style','archival'),
                 'media_sources':[x.get('page_url','') for x in credits if x.get('page_url')],
                 'review_notice':'AI generated UNVERIFIED script; check every factual assertion and media license before final render.',
                 'production_job':job_id,'narrator':{'voice':job['voice']},'scenes':scenes}
