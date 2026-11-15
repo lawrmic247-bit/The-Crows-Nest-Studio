@@ -48,11 +48,29 @@ jobs:
           print(name)
           PY
       - name: Publish verified release assets
-        if: startsWith(github.ref, 'refs/tags/')
+        # A passing main-branch build creates the release when VERSION changes.
+        # A manually pushed tag still works; existing releases are never overwritten.
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "Crows_Nest_Studio_Update_${GITHUB_REF_NAME}.zip" \
-            "Crows_Nest_Studio_v$(cat VERSION)_Windows.zip" \
-            --title "The Crow's Nest Studio $GITHUB_REF_NAME" --generate-notes
+          version="$(tr -d '\r\n' < VERSION)"
+          tag="v${version}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "$tag" ]]; then
+            echo "::error::The pushed tag does not match VERSION."
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists. No new release needed."
+            exit 0
+          fi
+          existing_tag_sha="$(git ls-remote --tags origin "refs/tags/$tag" | awk 'NR==1 {print $1}')"
+          if [[ -n "$existing_tag_sha" && "$existing_tag_sha" != "$GITHUB_SHA" ]]; then
+            echo "::error::Tag $tag belongs to another commit. Increment VERSION instead."
+            exit 1
+          fi
+          gh release create "$tag" \
+            "Crows_Nest_Studio_Update_${tag}.zip" \
+            "Crows_Nest_Studio_v${version}_Windows.zip" \
+            --target "$GITHUB_SHA" \
+            --title "The Crow's Nest Studio $tag" --generate-notes
