@@ -497,6 +497,20 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
         if job.get('visual_style')=='ai_reenactment':
             emit('gathering_media','Preparing optional local illustrative AI reenactments...')
             _local_reenactments(job,scenes,progress=progress)
+            generated=[{'title':scene.get('heading',''),
+                        'local_path':scene['visual'],
+                        'license':'AI-generated locally; review model and media licenses',
+                        'artist':'Locally configured ComfyUI/Wan workflow',
+                        'restrictions':'ILLUSTRATIVE — NOT HISTORICAL FOOTAGE',
+                        'scene':idx}
+                       for idx,scene in enumerate(scenes,1)
+                       if 'AI-generated' in scene.get('visual_provenance','')]
+            if generated:
+                credits.extend(generated)
+                sheet=MEDIA_DIR/job_id/'media_credits.json'
+                atomic_json(sheet,{'notice':'Every archival image and generated clip requires human media review. AI clips must remain labeled.',
+                                   'items':credits})
+                credit_path=str(sheet)
         title=job['title'].strip();slug=slugify(title)+'_'+job_id[:6]
         research_leads=make_research_leads(job['prompt'],MEDIA_DIR/job_id/'research_leads.json')
         manifest={'slug':slug,'title':title,'description':'Independent, unofficial military documentary. Research and fact checking required before publication.',
