@@ -142,7 +142,7 @@ def normalize_for_speech(text: str) -> str:
         lambda m: f'{m.group(1)} {spoken_day(int(m.group(2)))}, {spoken_year(int(m.group(3)))}',
         text)
     text=_DMY_PATTERN.sub(
-        lambda m: f'{spoken_day(int(m.group(1)))} {m.group(2)} {spoken_year(int(m.group(3)))}',
+        lambda m: f'the {spoken_day(int(m.group(1)))} of {m.group(2)}, {spoken_year(int(m.group(3)))}',
         text)
     text=_YEAR_PATTERN.sub(lambda m: spoken_year(int(m.group(1)),bool(m.group(2))),text)
     pronunciations=load_pronunciations()
