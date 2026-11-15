@@ -81,6 +81,28 @@ class ChatGPTInboxTests(unittest.TestCase):
         self.assertEqual(job['id'],engine.import_chatgpt_job(path,source_folder=self.inbox)['id'])
         self.assertTrue(Path(job['notes_file']).is_file())
 
+    def test_prepared_chatgpt_scenes_skip_ollama_but_require_fact_check(self):
+        path=self.inbox/'ready_script.json'
+        path.write_text(json.dumps({
+            'schema':'crowsnest.job.v1',
+            'topic':'Explain the courage of Navy corpsmen in the Vietnam War and historical context',
+            'minutes':3, 'format':'wide', 'visual_style':'archival',
+            'auto_media':False,
+            'scenes':[{'heading':'Introduction','narration':
+                       'A Navy corpsman served beside Marines during the Vietnam War. '
+                       'This documentary reviews documented actions and keeps later accounts distinct.'}]
+        }),encoding='utf-8')
+        job=engine.import_chatgpt_job(path,source_folder=self.inbox)
+        def fail(*args,**kwargs):
+            raise AssertionError('Prepared scripts should not require Ollama')
+        result=engine.run_job(job['id'],script_generator=fail)
+        self.assertEqual(result['status'],'awaiting_review')
+        doc=json.loads(Path(result['manifest']).read_text(encoding='utf-8'))
+        self.assertEqual(doc['scenes'][0]['heading'],'Introduction')
+        self.assertFalse(doc['approved'])
+        with self.assertRaises(ValueError):
+            engine.prepare_for_render(job['id'],rights_confirmed=False)
+
     def test_untrusted_job_rejected(self):
         path=self.inbox/'bad.json'
         path.write_text(json.dumps({
