@@ -94,7 +94,7 @@ class ProductionStudio(tk.Toplevel):
             ('TikTok • punchy vertical 9:16',self.want_tiktok),
         ):
             tk.Checkbutton(outputs,text=label,variable=var,bg=PANEL,fg=CREAM,
-                activeforeground=CREAM,activebackground=PANEL,selectcolor=INK,
+                activeforeground=CREAM,activebackground=PANEL,selectcolor=NAVY,
                 font=('Segoe UI',10)).pack(anchor='w',pady=(3,3))
 
         tk.Label(create,text='Archival uses photos. Motion animates those photos. Hybrid adds branded cards. '
