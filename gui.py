@@ -25,11 +25,17 @@ VOICE_OPTIONS = {
     'Piper Lessac — basic (legacy)': 'en_US-lessac-medium',
 }
 
-GOLD = '#9fc5bc'
-INK = '#202a33'
-PANEL = '#303d49'
-CREAM = '#e0e6e8'
-MUTED = '#bac7ce'
+DISPLAY_MODE = update_engine.load_settings().get('appearance','slate')
+SOFT_LIGHT = DISPLAY_MODE == 'soft_light'
+GOLD = '#477669' if SOFT_LIGHT else '#9fc5bc'
+INK = '#f2f5f2' if SOFT_LIGHT else '#202a33'
+PANEL = '#dfe7e2' if SOFT_LIGHT else '#303d49'
+CREAM = '#23382f' if SOFT_LIGHT else '#e0e6e8'
+MUTED = '#50695f' if SOFT_LIGHT else '#bac7ce'
+FIELD_BG = '#ffffff' if SOFT_LIGHT else '#374653'
+TAB_BG = '#537566' if SOFT_LIGHT else '#48655e'
+ACTIVE_BG = '#5d8877' if SOFT_LIGHT else '#bcd8cf'
+ACTIVE_FG = '#ffffff' if SOFT_LIGHT else INK
 
 
 def python_bin() -> str:
@@ -46,6 +52,12 @@ class App(tk.Tk):
         self.geometry('1160x830')
         self.minsize(850,660)
         self.configure(bg=INK)
+        try:
+            scale=float(update_engine.load_settings().get('ui_scale',1.0))
+            if 0.9<=scale<=1.4:
+                self.tk.call('tk','scaling',scale*1.33333333)
+        except (OSError,ValueError,TypeError,tk.TclError):
+            pass
         if sys.platform == 'win32':
             try:
                 self.iconbitmap(default=str(ROOT/'assets'/'branding'/'CrowsNestStudio.ico'))
@@ -69,11 +81,11 @@ class App(tk.Tk):
                         foreground=CREAM,background=PANEL,borderwidth=0)
         style.map('TButton',background=[('active','#45616a'),('disabled',PANEL)],
                   foreground=[('disabled','#8c9ba4')])
-        style.configure('TEntry',font=('Segoe UI',11),fieldbackground='#374653',
+        style.configure('TEntry',font=('Segoe UI',11),fieldbackground=FIELD_BG,
                         foreground=CREAM,insertcolor=CREAM,padding=(9,8),borderwidth=1)
-        style.configure('TCombobox',font=('Segoe UI',11),fieldbackground='#374653',
+        style.configure('TCombobox',font=('Segoe UI',11),fieldbackground=FIELD_BG,
                         foreground=CREAM,background=PANEL,padding=6)
-        style.map('TCombobox',fieldbackground=[('readonly','#374653')],
+        style.map('TCombobox',fieldbackground=[('readonly',FIELD_BG)],
                   foreground=[('readonly',CREAM)])
         style.configure('TCheckbutton',font=('Segoe UI',11),background=INK,foreground=CREAM)
         style.map('TCheckbutton',background=[('active',INK)],
@@ -81,7 +93,7 @@ class App(tk.Tk):
         style.configure('Studio.TNotebook',background=INK,borderwidth=0)
         style.configure('Studio.TNotebook.Tab',font=('Segoe UI',11),padding=(22,13),
                         background=PANEL,foreground=CREAM)
-        style.map('Studio.TNotebook.Tab',background=[('selected','#48655e')],
+        style.map('Studio.TNotebook.Tab',background=[('selected',TAB_BG)],
                   foreground=[('selected','#ffffff')])
 
         header=tk.Frame(self,bg=INK,padx=24,pady=16)
@@ -176,7 +188,7 @@ class App(tk.Tk):
                    command=self.edit_pronunciations).pack(anchor='w',pady=(0,3))
         self.generate_button=tk.Button(voice,text='Generate full narration',
                          command=self.generate_narration,bg=GOLD,fg=INK,
-                         activebackground='#bcd8cf',activeforeground=INK,relief='flat',
+                         activebackground=ACTIVE_BG,activeforeground=ACTIVE_FG,relief='flat',
                          font=('Segoe UI',12,'bold'),padx=18,pady=11,cursor='hand2')
         self.generate_button.pack(anchor='w',pady=(14,13))
         listen=tk.Frame(voice,bg=INK);listen.pack(fill='x')
@@ -220,7 +232,7 @@ class App(tk.Tk):
         row=tk.Frame(export,bg=INK);row.pack(fill='x')
         self.render_button=tk.Button(row,text='Render video',
                          command=self.render,bg=GOLD,fg=INK,
-                         activebackground='#bcd8cf',activeforeground=INK,relief='flat',
+                         activebackground=ACTIVE_BG,activeforeground=ACTIVE_FG,relief='flat',
                          font=('Segoe UI',12,'bold'),padx=21,pady=12,cursor='hand2')
         self.render_button.pack(side='left',padx=(0,14))
         ttk.Button(row,text='Open exports folder',
@@ -247,7 +259,7 @@ class App(tk.Tk):
                         variable=self.publish_reviewed).pack(anchor='w',pady=(0,22))
         self.buffer_button=tk.Button(publish,text='Continue to Buffer upload',
                          command=self.open_buffer_upload,bg=GOLD,fg=INK,
-                         activebackground='#bcd8cf',activeforeground=INK,relief='flat',
+                         activebackground=ACTIVE_BG,activeforeground=ACTIVE_FG,relief='flat',
                          font=('Segoe UI',12,'bold'),padx=22,pady=13,cursor='hand2')
         self.buffer_button.pack(anchor='w')
         tk.Label(publish,text='Buffer currently requires a publicly hosted video URL for its API. '
@@ -264,6 +276,7 @@ class App(tk.Tk):
         row=tk.Frame(activity,bg=INK);row.pack(fill='x',pady=(0,15))
         ttk.Button(row,text='Check setup',command=self.check_setup).pack(side='left',padx=(0,10))
         ttk.Button(row,text='System / Updates',command=self.system_updates).pack(side='left',padx=(0,10))
+        ttk.Button(row,text='Display comfort',command=self.display_comfort).pack(side='left',padx=(0,10))
         ttk.Button(row,text='Open exports',command=self.open_exports).pack(side='left')
         self.log=scrolledtext.ScrolledText(activity,height=16,wrap='word',
                           fg=CREAM,bg=PANEL,insertbackground=CREAM,
@@ -752,6 +765,41 @@ class App(tk.Tk):
         except (ValueError,OSError) as error:
             messagebox.showwarning('Script needed',str(error));return
         FactCheckDialog(self,data['slug'],data['title'],script)
+
+    def display_comfort(self):
+        """Light/dark and text scaling are preferences, applied on next launch."""
+        dialog=tk.Toplevel(self)
+        dialog.title("Display comfort")
+        dialog.geometry('470x340')
+        dialog.configure(bg=INK)
+        dialog.transient(self)
+        settings=update_engine.load_settings()
+        appearance=tk.StringVar(value=settings.get('appearance','slate'))
+        size=tk.StringVar(value=str(int(float(settings.get('ui_scale',1.0))*100)))
+        tk.Label(dialog,text='Customize the workspace',bg=INK,fg=CREAM,
+                 font=('Segoe UI',16,'bold')).pack(anchor='w',padx=22,pady=(22,7))
+        tk.Label(dialog,text='Choose a low-glare dark or soft light theme. '
+                 'Increase text size if the interface feels crowded.',
+                 bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=420,
+                 justify='left').pack(anchor='w',padx=22,pady=(0,17))
+        tk.Label(dialog,text='Appearance',bg=INK,fg=CREAM,
+                 font=('Segoe UI',10,'bold')).pack(anchor='w',padx=22)
+        ttk.Combobox(dialog,textvariable=appearance,values=['slate','soft_light'],
+                     state='readonly').pack(fill='x',padx=22,pady=(4,13))
+        tk.Label(dialog,text='UI text size (%)',bg=INK,fg=CREAM,
+                 font=('Segoe UI',10,'bold')).pack(anchor='w',padx=22)
+        ttk.Combobox(dialog,textvariable=size,values=['90','100','115','125','140'],
+                     state='readonly').pack(fill='x',padx=22,pady=(4,15))
+        def save():
+            if appearance.get() not in ('slate','soft_light'):
+                return
+            settings['appearance']=appearance.get()
+            settings['ui_scale']=int(size.get())/100
+            update_engine.save_settings(settings)
+            dialog.destroy()
+            messagebox.showinfo('Display saved','Close and reopen Studio to apply your comfort settings.',
+                                parent=self)
+        ttk.Button(dialog,text='Save display settings',command=save).pack(anchor='w',padx=22)
 
     def _configured_repo(self):
         return update_engine.load_settings().get('release_repo','')
