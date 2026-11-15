@@ -409,6 +409,7 @@ class ProductionStudio(tk.Toplevel):
         ttk.Button(inbox,text='Check local AI engine',command=self.check_local_video).pack(
             anchor='w',pady=(0,10))
         self.refresh()
+        self.tabs.select(self.queue_page)
         self.after(30000,self._scan_inbox_timer)
 
     def _page_mouse_wheel(self,event):
