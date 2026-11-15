@@ -725,25 +725,41 @@ class ProductionStudio(tk.Toplevel):
 
     def _run(self,ids):
         if self.busy:
-            messagebox.showinfo('Busy','A production job is already running.',parent=self);return
+            self._log('Production is already running; it will advance automatically after drafting.')
+            return
         if not ids:return
         self.busy=True
-        self.run_btn.configure(state='disabled');self.selected_btn.configure(state='disabled')
+        self._sync_primary()
         def worker():
+            ready=[]
             for job_id in ids:
                 try:
-                    self.after(0,lambda ident=job_id:self._log('Starting '+ident))
-                    engine.run_job(job_id,progress=lambda s:self.after(0,lambda m=s:self._log(m)))
+                    self.after(0,lambda ident=job_id:self._log('Researching and writing '+ident))
+                    result=engine.run_job(
+                        job_id,progress=lambda note:self.after(
+                            0,lambda message=note:self._log(message)))
+                    if result.get('status')=='awaiting_review':
+                        ready.append(job_id)
                 except Exception as exc:
-                    msg=str(exc)
-                    self.after(0,lambda m=msg:self._log('ERROR: '+m))
-                self.after(0,lambda ident=job_id:self.refresh(ident))
-            self.after(0,self._idle)
+                    self.after(0,lambda message=str(exc):self._log('ERROR: '+message))
+            self.after(0,lambda completed=ready:self._idle(completed))
         threading.Thread(target=worker,daemon=True).start()
 
-    def _idle(self):
-        self.busy=False;self.run_btn.configure(state='normal');self.selected_btn.configure(state='normal')
-        self.refresh();self._log('Queue processing stopped. Open drafts in the editor for source review.')
+    def _idle(self,completed=None):
+        self.busy=False
+        completed=completed or []
+        if completed:
+            self.stage_view.set('Ready for review')
+            self.refresh(completed[-1])
+            self._log(f'{len(completed)} draft(s) moved to Ready for review.')
+            if len(completed)==1 and self.on_load:
+                # One production, one next step: return directly to the editor.
+                self.after(80,self.open_draft)
+                return
+        else:
+            self.refresh()
+            self._log('Queue complete. Check Needs work for errors or retry.')
+        self._sync_primary()
 
     def run_selected(self):
         jid=self._selection()
@@ -759,21 +775,30 @@ class ProductionStudio(tk.Toplevel):
         if not jid:return
         job=engine.get_job(jid)
         if not job.get('manifest'):
-            messagebox.showinfo('Not yet drafted','Run this job to generate a script first.',parent=self);return
+            self.help_line.set('Research and script creation have not completed yet.')
+            return
         selections={'Full documentary':'full','YouTube Short':'shorts','TikTok':'tiktok'}
         requested=selections.get(self.output_choice.get(),'full')
         manifests=job.get('variants',{})
-        chosen=manifests.get(requested)
+        chosen=manifests.get(requested) or (
+            job['manifest'] if requested=='full' and not manifests else None)
         if not chosen:
-            names=', '.join(manifests) if manifests else 'default'
-            messagebox.showwarning('Version not generated',
-                f'This episode has: {names}. Choose a generated output above.',parent=self)
+            self.help_line.set(
+                'This version was not requested. Available: '+(', '.join(manifests) or 'full'))
             return
         if self.on_load:
-            try:self.on_load(Path(chosen),jid)
-            except Exception as exc:messagebox.showerror('Unable to load script',str(exc),parent=self);return
-            self._log('Loaded draft into the editor. Review source evidence in FACT CHECK before final rendering.')
-        else:self._open(Path(job['manifest']))
+            try:
+                result=self.on_load(Path(chosen),jid)
+                if result is False:
+                    return
+                if job.get('status') in engine.REVIEW_JOB_STATES:
+                    engine.archive_job(jid)
+                # The editor is the next stage. Close this auxiliary queue window.
+                self.destroy()
+            except Exception as exc:
+                messagebox.showerror('Unable to load script',str(exc),parent=self)
+        else:
+            self._open(Path(chosen))
 
     def open_credits(self):
         jid=self._selection()
