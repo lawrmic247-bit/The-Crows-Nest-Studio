@@ -373,6 +373,14 @@ def remove_queue_job(job_id:str)->dict:
         return job
 
 
+def move_ready_drafts_to_library()->int:
+    """Clear an old review backlog by moving drafts to the searchable library."""
+    ids=[job['id'] for job in list_stage_jobs('review')]
+    for job_id in ids:
+        archive_job(job_id)
+    return len(ids)
+
+
 def clear_pending_queue()->int:
     """Clear only waiting/failed queue records; never interrupt active work."""
     ids=[job['id'] for job in list_jobs()
