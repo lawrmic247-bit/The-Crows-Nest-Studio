@@ -329,6 +329,11 @@ class App(tk.Tk):
         }
         ttk.Combobox(right,textvariable=self.visual_style_var,state='readonly',
                      values=list(self.visual_styles)).pack(fill='x')
+        self.ai_setup_hint=tk.StringVar(value='')
+        tk.Label(hero,textvariable=self.ai_setup_hint,bg=PANEL,fg=MUTED,
+                 font=('Segoe UI',9),wraplength=700,justify='left').pack(
+                     anchor='w',pady=(1,13))
+        self.visual_style_var.trace_add('write',lambda *_:self._refresh_ai_hint())
         tk.Label(hero,text='DELIVER TO',bg=PANEL,fg=MUTED,
                  font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',pady=(0,8))
         targets=tk.Frame(hero,bg=PANEL)
@@ -568,6 +573,7 @@ class App(tk.Tk):
         self.after(10000,self.poll_chat_inbox)
         self.after(600,self._refresh_library_summary)
         self.after(850,self.refresh_models)
+        self.after(900,self._refresh_ai_hint)
         self.protocol('WM_DELETE_WINDOW',self.close)
 
     def new_film(self):
@@ -925,6 +931,31 @@ class App(tk.Tk):
             self.model_status.set('Model '+model+' chosen. Verifying installed models…')
         self.text_model_setup(on_select=ready)
 
+    def _refresh_ai_hint(self):
+        if self.visual_style_var.get()!='Animated realism (local AI)':
+            self.ai_setup_hint.set('Archival styles use source imagery and title cards; no video model required.')
+            return
+        workflow=update_engine.load_settings().get('comfyui_workflow','')
+        if workflow and Path(workflow).is_file():
+            self.ai_setup_hint.set('AI MODEL: local ComfyUI workflow selected — '+Path(workflow).name)
+        else:
+            self.ai_setup_hint.set('AI MODEL REQUIRED: configure ComfyUI and a Wan-compatible workflow in Tools before research.')
+
+    def _preflight_video_style(self,style:str)->bool:
+        if style!='ai_reenactment':
+            return True
+        try:
+            from studio import load_workflow,status,LocalVideoError
+            workflow=update_engine.load_settings().get('comfyui_workflow','')
+            if not workflow:
+                raise LocalVideoError('No ComfyUI workflow selected. Open Tools / Integrations and choose one.')
+            load_workflow(Path(workflow))
+            status()
+        except (OSError,ValueError,LocalVideoError) as exc:
+            self._block_step('AI VIDEO ENGINE NOT READY — '+str(exc)[:170])
+            return False
+        return True
+
     def start_production(self):
         topic=self.topic_var.get().strip()
         if len(topic)<8:
@@ -965,6 +996,8 @@ class App(tk.Tk):
             self._block_step('MODEL CHANGED — Select an installed Ollama model before starting.')
             return
         self._save_selected_model()
+        if not self._preflight_video_style(style):
+            return
         self._queue_production(topic,minutes,style,outputs,model)
 
     def _queue_production(self,topic,minutes,visual_style,deliverables,model):
