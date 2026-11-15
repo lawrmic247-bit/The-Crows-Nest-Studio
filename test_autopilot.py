@@ -94,4 +94,26 @@ class ChatGPTInboxTests(unittest.TestCase):
             engine.import_chatgpt_job(path,source_folder=Path(self.folder.name))
 
 
+class MotionDocumentaryTests(unittest.TestCase):
+    def test_archival_still_gets_motion_render_without_new_images(self):
+        import wave
+        from PIL import Image
+        import studio
+        with tempfile.TemporaryDirectory() as folder:
+            parent=Path(folder)
+            picture=parent/'archival_still.jpg'
+            Image.new('RGB',(640,360),(30,52,70)).save(picture)
+            wave_path=parent/'narration.wav'
+            with wave.open(str(wave_path),'wb') as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(24000)
+                wav.writeframes(b'\x00\x00'*24000)
+            output=parent/'animated_photo.mp4'
+            studio.mk_scene({},1,wave_path,1.0,picture,output,(320,180),10,'motion')
+            self.assertTrue(output.is_file())
+            self.assertGreater(output.stat().st_size,1000)
+            self.assertAlmostEqual(studio.probe_duration(output),1.0,delta=0.3)
+
+
 if __name__=='__main__': unittest.main()
