@@ -5,7 +5,7 @@ import json, os, queue, re, subprocess, sys, threading, webbrowser, tkinter as t
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 from fact_checker import require_clearance, status_summary, sync_report
-from narration import voice_slug, AudioPlayer, PlaybackError, find_ffplay, PRONUNCIATION_FILE, DEFAULT_PRONUNCIATIONS, load_pronunciations
+from narration import voice_slug, AudioPlayer, PlaybackError, find_ffplay, sample_preview_path, PRONUNCIATION_FILE, DEFAULT_PRONUNCIATIONS, load_pronunciations
 from voice_profiles import list_profiles
 from voice_studio_ui import VoiceStudio
 import production_engine as production_engine
@@ -392,11 +392,20 @@ class App(tk.Tk):
                  'The original script and captions do not change.',
                  bg=INK,fg=MUTED,font=('Segoe UI',10),wraplength=650,
                  justify='left').pack(fill='x',padx=19,pady=(0,15))
-        data=load_pronunciations()
+        try:
+            data=load_pronunciations()
+            raw_text=json.dumps(data,indent=2,ensure_ascii=False)
+        except (ValueError,OSError):
+            raw_text=(PRONUNCIATION_FILE.read_text(encoding='utf-8',errors='replace')
+                      if PRONUNCIATION_FILE.is_file()
+                      else json.dumps(DEFAULT_PRONUNCIATIONS,indent=2,ensure_ascii=False))
+            messagebox.showwarning('Repair pronunciation guide',
+                'The saved pronunciation guide is invalid. Correct its JSON contents and save.',
+                parent=top)
         editor=scrolledtext.ScrolledText(top,font=('Consolas',11),bg=PANEL,fg=CREAM,
                        insertbackground=CREAM,wrap='none',padx=13,pady=12)
         editor.pack(fill='both',expand=True,padx=19,pady=(0,13))
-        editor.insert('1.0',json.dumps(data,indent=2,ensure_ascii=False))
+        editor.insert('1.0',raw_text)
         def save():
             try:
                 rules=json.loads(editor.get('1.0','end'))
@@ -624,8 +633,7 @@ class App(tk.Tk):
     def preview_selected_voice(self):
         voice = self._voice()
         speed = self._speed()
-        suffix = f'{int(speed * 100):03d}'
-        preview = ROOT / 'assets' / 'narration' / 'voice_previews' / f'{voice_slug(voice)}_{suffix}_pron2.wav'
+        preview = sample_preview_path(voice,speed)
         if preview.is_file() and preview.stat().st_size > 44:
             self._play_audio(preview)
             return
