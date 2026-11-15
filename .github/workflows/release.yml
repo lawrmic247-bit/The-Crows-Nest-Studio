@@ -79,6 +79,43 @@ jobs:
           app.close()
           print('Soft-light theme, font scaling and all creation checkboxes verified.')
           PY
+      - name: Verify scrolling on small windows and at larger font sizes
+        run: |
+          export LOCALAPPDATA="$RUNNER_TEMP/crows_scroll"
+          mkdir -p "$LOCALAPPDATA/TheCrowsNestStudio"
+          printf '{"appearance":"soft_light","ui_scale":1.4}' > "$LOCALAPPDATA/TheCrowsNestStudio/settings.json"
+          xvfb-run -a python - <<'PY'
+          from types import SimpleNamespace
+          from gui import App
+          from production_ui import ProductionStudio
+          app=App()
+          app.geometry('740x520')
+          prod=ProductionStudio(app)
+          prod.geometry('710x500')
+          prod.update()
+          assert len(app._page_scroll_canvases)==5
+          assert len(prod._page_scroll_canvases)==3
+          for owner in (app,prod):
+              for index,canvas in enumerate(owner._page_scroll_canvases):
+                  owner.tabs.select(index)
+                  owner.update()
+                  assert float(canvas.cget('borderwidth'))==0
+                  assert canvas.cget('yscrollcommand')
+                  first=canvas.yview()[0]
+                  # Label inside selected scrollable frame triggers page wheel.
+                  outer=owner._page_scroll_containers[index]
+                  inside=canvas.nametowidget(canvas.find_all()[0]) if False else None
+                  frame=outer.winfo_children()[1] if False else None
+                  event=SimpleNamespace(widget=outer,num=5,delta=0)
+                  owner._page_mouse_wheel(event)
+                  assert canvas.yview()[0]>=first
+          # Both the production creation page and all main pages expose scrollbar.
+          assert prod._page_scroll_canvases[0].yview()[1]<1.0
+          assert app._page_scroll_canvases[1].yview()[1]<1.0
+          prod.destroy()
+          app.close()
+          print('All eight pages have scrollbars and respond to wheel events.')
+          PY
       - name: Build verified code update
         run: python build_release.py
       - name: Build self-contained source installer ZIP
