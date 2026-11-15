@@ -94,6 +94,17 @@ class ProductionLifecycleTests(unittest.TestCase):
         self.assertTrue(again['removed'])
         self.assertEqual(len(engine.list_jobs()),0)
 
+    def test_clear_old_review_backlog_moves_drafts_to_library(self):
+        a=self.make('Historical Navy hospital corpsman documentary review')
+        b=self.make('Navy heritage and maritime ceremonies')
+        for job in (a,b):
+            engine.change(job['id'],status='awaiting_review')
+        self.assertEqual(len(engine.list_stage_jobs('review')),2)
+        self.assertEqual(engine.move_ready_drafts_to_library(),2)
+        self.assertEqual(engine.list_stage_jobs('review'),[])
+        self.assertEqual(len(engine.list_stage_jobs('archive')),2)
+        self.assertFalse(any(j.get('removed') for j in engine.list_jobs()))
+
     def test_stage_name_rejects_unknown_filter(self):
         with self.assertRaisesRegex(ValueError,'Unknown'):
             engine.list_stage_jobs('not-a-valid-stage')
