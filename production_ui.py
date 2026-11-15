@@ -448,6 +448,7 @@ class ProductionStudio(tk.Toplevel):
         for file in sorted(folder.glob('*.json'))[:60]:
             try:
                 job=engine.import_chatgpt_job(file,source_folder=folder)
+                if job.get('removed'):continue
                 if job['id'] not in seen:
                     ids.append(job['id'])
                     seen.add(job['id'])
