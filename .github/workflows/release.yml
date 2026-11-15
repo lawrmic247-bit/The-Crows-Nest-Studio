@@ -152,6 +152,26 @@ jobs:
           app.close()
           print('Quick AI opens no notes picker; discovered sources display in fact checker.')
           PY
+      - name: Capture redesigned main window for visual QA
+        run: |
+          xvfb-run -a -s "-screen 0 1280x1024x24" python - <<'PY'
+          import base64,io
+          from PIL import ImageGrab
+          from gui import App
+          app=App()
+          app.geometry('1160x830+0+0')
+          app.update()
+          try:
+              shot=ImageGrab.grab(bbox=(0,0,1160,830)).convert('RGB')
+              shot.thumbnail((810,580))
+              buffer=io.BytesIO()
+              shot.save(buffer,format='JPEG',quality=63,optimize=True)
+              print('CROWS_UI_SCREENSHOT='+base64.b64encode(buffer.getvalue()).decode())
+          except Exception as exc:
+              print('Visual inspection unavailable: '+str(exc))
+          finally:
+              app.close()
+          PY
       - name: Build verified code update
         run: python build_release.py
       - name: Build self-contained source installer ZIP
