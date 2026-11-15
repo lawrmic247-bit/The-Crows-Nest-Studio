@@ -16,6 +16,12 @@ class NarratorTextTests(unittest.TestCase):
         self.assertEqual(narration.spoken_year(2004), 'two thousand four')
         self.assertEqual(narration.spoken_year(2018), 'twenty eighteen')
         self.assertEqual(narration.spoken_year(1960,True), 'nineteen sixties')
+        self.assertEqual(narration.normalize_for_speech('May 16, 1968'),
+                         'May sixteenth, nineteen sixty-eight')
+        self.assertEqual(narration.normalize_for_speech('16 May 1968'),
+                         'sixteenth May nineteen sixty-eight')
+        self.assertEqual(narration.normalize_for_speech('5/16/1968'),
+                         '5/16/1968')
         spoken=narration.normalize_for_speech(
             'In 1967, a Navy corpsman worked with the Marine Corps. '
             'Corpsmen served in Quảng Trị in the 1960s.')
