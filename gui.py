@@ -1028,6 +1028,7 @@ class App(tk.Tk):
         except (OSError,ValueError) as exc:
             messagebox.showerror('Could not start production',str(exc),parent=self)
             return
+        production_engine.change(job['id'],model_locked=True)
         self.pipeline_status.set('RESEARCHING  •  Finding source leads, then writing the draft.')
         self._set_log('New film job '+job['id']+' / '+topic+'\n')
         def work():
@@ -1269,7 +1270,7 @@ class App(tk.Tk):
                     return
                 for job_id in pending:
                     try:
-                        production_engine.change(job_id,model=selected)
+                        production_engine.change(job_id,model=selected,model_locked=True)
                         result=production_engine.run_job(job_id)
                         if result['status']=='awaiting_review':
                             self.pipe.put(('chat_ready',job_id))
