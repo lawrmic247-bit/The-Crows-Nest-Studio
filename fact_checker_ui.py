@@ -236,3 +236,159 @@ class FactCheckDialog(tk.Toplevel):
         path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text(report_markdown(self.report),encoding='utf-8')
         messagebox.showinfo('Source report exported',str(path),parent=self)
+
+
+class InlineFactReview(tk.Frame):
+    """The evidence desk inside Step 2; never opens a second application window.
+
+    Source-discovery items are leads, not proof. The original clearance
+    requirements in fact_checker.py remain authoritative.
+    """
+    def __init__(self,parent,*,on_saved=None):
+        super().__init__(parent,bg=DARK)
+        self.on_saved=on_saved
+        self.report=None
+        self.slug=None
+        self.source_leads=None
+        self.selection=None
+        self.verdict=tk.StringVar(value='unreviewed')
+        self.source=tk.StringVar()
+        self.confirm=tk.BooleanVar(value=False)
+        self.summary=tk.StringVar(value='Load a researched documentary to begin.')
+        title=tk.Frame(self,bg=DARK)
+        title.pack(fill='x',pady=(12,8))
+        tk.Label(title,text='EVIDENCE DESK',bg=DARK,fg=GOLD,
+                 font=('Segoe UI',10,'bold')).pack(anchor='w')
+        tk.Label(title,text='Verify every claim before narration',
+                 bg=DARK,fg=LIGHT,font=('Segoe UI',16,'bold')).pack(anchor='w',pady=(4,3))
+        tk.Label(title,textvariable=self.summary,bg=DARK,fg=GREY,
+                 font=('Segoe UI',10),wraplength=720,justify='left').pack(anchor='w')
+        listbox=tk.Frame(self,bg=DARK)
+        listbox.pack(fill='x',pady=(0,8))
+        self.claims=ttk.Treeview(listbox,columns=('status','claim'),
+                      show='headings',height=6,style='Evidence.Treeview')
+        self.claims.heading('status',text='REVIEW')
+        self.claims.heading('claim',text='CLAIM')
+        self.claims.column('status',width=145,stretch=False)
+        self.claims.column('claim',width=600,stretch=True)
+        scroll=ttk.Scrollbar(listbox,orient='vertical',command=self.claims.yview)
+        self.claims.configure(yscrollcommand=scroll.set)
+        scroll.pack(side='right',fill='y')
+        self.claims.pack(fill='x',expand=True)
+        self.claims.bind('<<TreeviewSelect>>',self._select)
+        form=tk.Frame(self,bg=DARK)
+        form.pack(fill='x')
+        form.columnconfigure(1,weight=1)
+        tk.Label(form,text='VERDICT',fg=GOLD,bg=DARK,
+                 font=('Segoe UI',9,'bold')).grid(row=0,column=0,sticky='w',padx=(0,12),pady=5)
+        ttk.Combobox(form,textvariable=self.verdict,
+             values=('unreviewed','supported','disputed','needs_correction','nonfactual'),
+             state='readonly',width=20).grid(row=0,column=1,sticky='w',pady=5)
+        tk.Label(form,text='SOURCE URL',fg=GOLD,bg=DARK,
+                 font=('Segoe UI',9,'bold')).grid(row=1,column=0,sticky='w',padx=(0,12),pady=5)
+        ttk.Entry(form,textvariable=self.source).grid(row=1,column=1,sticky='ew',pady=5)
+        tk.Label(form,text='EXACT SUPPORTING EXCERPT',fg=GOLD,bg=DARK,
+                 font=('Segoe UI',9,'bold')).grid(row=2,column=0,sticky='nw',padx=(0,12),pady=5)
+        self.quote=scrolledtext.ScrolledText(form,height=3,wrap='word',bg=PANEL,fg=LIGHT,
+                    insertbackground=LIGHT,font=('Segoe UI',10),padx=8,pady=7)
+        self.quote.grid(row=2,column=1,sticky='ew',pady=5)
+        tk.Label(form,text='NOTES',fg=GOLD,bg=DARK,
+                 font=('Segoe UI',9,'bold')).grid(row=3,column=0,sticky='nw',padx=(0,12),pady=5)
+        self.notes=scrolledtext.ScrolledText(form,height=2,wrap='word',bg=PANEL,fg=LIGHT,
+                    insertbackground=LIGHT,font=('Segoe UI',10),padx=8,pady=7)
+        self.notes.grid(row=3,column=1,sticky='ew',pady=5)
+        ttk.Checkbutton(form,
+             text='I checked the underlying source against this exact statement',
+             variable=self.confirm).grid(row=4,column=1,sticky='w',pady=(4,9))
+        actions=tk.Frame(self,bg=DARK)
+        actions.pack(fill='x',pady=(4,12))
+        ttk.Button(actions,text='Save evidence & next',
+                   command=self.save_selected).pack(side='left',padx=(0,9))
+        ttk.Button(actions,text='Find primary source',
+                   command=self.search_official).pack(side='left',padx=(0,9))
+        self.source_picker=tk.StringVar()
+        self.leads=ttk.Combobox(self,textvariable=self.source_picker,
+                    state='readonly',values=[],height=12)
+        tk.Label(self,text='RESEARCH LEADS — OPEN THE ORIGINAL SOURCE, THEN VERIFY ITS CLAIMS',
+                 bg=DARK,fg=GREY,font=('Segoe UI',9,'bold')).pack(anchor='w',pady=(5,3))
+        self.leads.pack(fill='x',pady=(0,7))
+        ttk.Button(self,text='Open selected source in browser',
+                   command=self.open_source).pack(anchor='w',pady=(0,14))
+        self._lead_urls=[]
+
+    def load(self,slug:str,title:str,script:str,source_leads:Path|None=None):
+        self.slug=slug
+        self.report=sync_report(slug,title,script)
+        self.source_leads=Path(source_leads) if source_leads else None
+        self.claims.delete(*self.claims.get_children())
+        from fact_checker import row_ready
+        for index,row in enumerate(self.report['claims']):
+            label='CLEARED' if row_ready(row) else row['status'].replace('_',' ').upper()
+            self.claims.insert('','end',iid=str(index),
+                               values=(label,row['text'][:420]))
+        cleared,total,missing=status_summary(self.report)
+        self.summary.set(f'{cleared} of {total} claims cleared • {missing} need supporting review')
+        self._lead_urls=[]
+        names=[]
+        if self.source_leads and self.source_leads.is_file():
+            try:
+                records=json.loads(self.source_leads.read_text(encoding='utf-8'))
+                for row in records.get('retrieved_sources',[])[:60]:
+                    if isinstance(row,dict) and safe_url(str(row.get('url',''))):
+                        self._lead_urls.append(str(row['url']))
+                        names.append((str(row.get('publisher','Source'))+' — '+
+                                     str(row.get('title',''))[:115]))
+            except (OSError,ValueError,TypeError):
+                pass
+        self.leads.configure(values=names)
+        self.source_picker.set(names[0] if names else 'No automatic leads; search official sources')
+        if self.report['claims']:
+            self.claims.selection_set('0')
+            self._select()
+
+    def _select(self,event=None):
+        selection=self.claims.selection()
+        if not selection or not self.report:return
+        self.selection=int(selection[0])
+        row=self.report['claims'][self.selection]
+        self.verdict.set(row.get('status','unreviewed'))
+        self.source.set(row.get('source_url',''))
+        self.quote.delete('1.0','end')
+        self.quote.insert('1.0',row.get('source_quote',''))
+        self.notes.delete('1.0','end')
+        self.notes.insert('1.0',row.get('review_notes',''))
+        self.confirm.set(bool(row.get('reviewer_confirmed',False)))
+
+    def save_selected(self):
+        if self.report is None or self.selection is None:
+            return
+        row=self.report['claims'][self.selection]
+        try:
+            mark_claim(row,status=self.verdict.get(),source_url=self.source.get(),
+                       source_quote=self.quote.get('1.0','end').strip(),
+                       review_notes=self.notes.get('1.0','end').strip(),
+                       reviewer_confirmed=self.confirm.get())
+            save_report(self.report)
+        except ValueError as exc:
+            messagebox.showwarning('Evidence incomplete',str(exc),parent=self)
+            return
+        index=self.selection
+        self.load(self.report['slug'],self.report['title'],
+                  '\n\n'.join(x['text'] for x in self.report['claims']),
+                  source_leads=self.source_leads)
+        if index+1<len(self.report['claims']):
+            self.claims.selection_set(str(index+1))
+            self.claims.see(str(index+1))
+            self._select()
+        if self.on_saved:self.on_saved()
+
+    def search_official(self):
+        if self.report is None or self.selection is None:return
+        webbrowser.open(research_url(self.report['claims'][self.selection]['text'],'official'))
+
+    def open_source(self):
+        index=self.leads.current()
+        if 0<=index<len(self._lead_urls):
+            webbrowser.open(self._lead_urls[index])
+            self.source.set(self._lead_urls[index])
+            self.confirm.set(False)
