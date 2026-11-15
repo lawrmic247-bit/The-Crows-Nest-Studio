@@ -1,0 +1,12 @@
+{
+  "slug": "01_lookout_intro",
+  "title": "The History of the Crow's Nest — A Lookout Above the Fleet",
+  "description": "An introduction to how sailors watched the horizon and why the lookout became a symbol of vigilance.",
+  "approved": true,
+  "sources": ["Replace with reviewed source links for a publishable episode"],
+  "scenes": [
+    {"heading":"Eyes on the horizon", "narration":"Long before radar screens and satellites, keeping watch at sea depended on human eyes. A lookout high above the deck could spot changes on the horizon before anyone below."},
+    {"heading":"The watch never ends", "narration":"Across generations, sailors stood watch in wind and darkness, looking for land, weather, nearby vessels, and signs of danger. Their responsibility was simple: see what others could not."},
+    {"heading":"The Crow's Nest", "narration":"That spirit inspires The Crow's Nest. We tell the stories behind military history, the traditions that endure, and the people who carried them forward. Independent, unofficial, and always curious."}
+  ]
+}

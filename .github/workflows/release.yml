@@ -1,0 +1,49 @@
+name: The Crow's Nest Studio Verified Release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify version matches tag
+        run: |
+          test "v$(cat VERSION | tr -d '\r\n')" = "$GITHUB_REF_NAME"
+      - name: Dependencies for checks
+        run: python -m pip install 'Pillow>=10.2'
+      - name: Run offline regression tests
+        run: python -m unittest discover -v
+      - name: Build verified code update
+        run: python build_release.py
+      - name: Build self-contained source installer ZIP
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          version=Path('VERSION').read_text().strip()
+          name=f'Crows_Nest_Studio_v{version}_Windows.zip'
+          allowed={'.py','.ps1','.bat','.md','.txt','.json','.ico','.png','.jpg','.jpeg','.sh'}
+          with zipfile.ZipFile(name,'w',zipfile.ZIP_DEFLATED,compresslevel=8) as z:
+              for p in Path('.').rglob('*'):
+                  if not p.is_file() or p.suffix.lower() not in allowed:continue
+                  if any(x in p.parts for x in ('.git','.venv','__pycache__','exports','.updates')):continue
+                  if p.name.startswith('test_') or p.parts[0]=='.github':continue
+                  z.write(p, f'The_Crows_Nest_Studio_{version}/'+p.as_posix())
+              z.write('VERSION',f'The_Crows_Nest_Studio_{version}/VERSION')
+          print(name)
+          PY
+      - name: Publish verified release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "Crows_Nest_Studio_Update_${GITHUB_REF_NAME}.zip" \
+            "Crows_Nest_Studio_v$(cat VERSION)_Windows.zip" \
+            --title "The Crow's Nest Studio $GITHUB_REF_NAME" --generate-notes

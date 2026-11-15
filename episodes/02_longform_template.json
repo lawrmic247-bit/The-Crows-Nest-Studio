@@ -1,0 +1,14 @@
+{
+  "slug": "02_longform_template",
+  "title": "The Crow's Nest — Documentary Episode",
+  "description": "Replace the sample narration and visuals with an independently researched 8–15 minute episode.",
+  "approved": false,
+  "sources": ["Add verified archival citations, dates, footage permissions"],
+  "scenes": [
+    {"heading":"Cold open", "narration":"Replace this with a concise, factual hook that immediately gives viewers a reason to watch."},
+    {"heading":"Historical setting", "narration":"Replace this with researched context, places and dates. Put one or more licensed or public-domain images or clips into the scene by setting visual to a file path."},
+    {"heading":"Why it mattered", "narration":"Replace this with your main analysis, including real documentation that supports each key claim."},
+    {"heading":"People and decisions", "narration":"Introduce the relevant people, actions, and consequences, carefully separating fact from interpretation."},
+    {"heading":"What remains", "narration":"Conclude with what changed, what lasted, and what audiences should remember. Add a gentle request to subscribe."}
+  ]
+}
