@@ -181,10 +181,10 @@ class ProductionStudio(tk.Toplevel):
         header.pack(fill='x')
         tk.Label(header,text="THE CROW'S NEST   /   PROJECTS",
                  bg=NAVY,fg=GOLD,font=('Segoe UI',9,'bold')).pack(anchor='w')
-        tk.Label(header,text='Film library & production queue',bg=NAVY,fg=CREAM,
+        tk.Label(header,text='Production library',bg=NAVY,fg=CREAM,
                  font=('Segoe UI',23,'bold')).pack(anchor='w',pady=(6,5))
-        tk.Label(header,text='Return to your drafts, compare formats and review sources. '
-                 'Advanced creation and integrations are available on separate pages.',
+        tk.Label(header,text='Your active work, review-ready scripts, and finished films—organized by stage. '
+                 'One next action per production; advanced tools stay out of the way.',
                  bg=NAVY,fg=MUTED,font=('Segoe UI',11),
                  wraplength=930,justify='left').pack(anchor='w')
         self.tabs=ttk.Notebook(self,style='Queue.TNotebook')
