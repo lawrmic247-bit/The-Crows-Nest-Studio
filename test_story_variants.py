@@ -64,6 +64,24 @@ class ShortFormTests(unittest.TestCase):
                 self.assertTrue(data["slug"].endswith("_"+label))
                 self.assertTrue(data["scenes"])
 
+    def test_punchy_local_rewrite_and_no_invented_year(self):
+        from story_variants import social_story
+        original=self.scenes*5
+        words=("The corpsman heard the grenade warning and immediately moved to protect "
+               "wounded Marines under enemy fire. ")
+        middle=("The battle took place in Vietnam, and his medical duty remained "
+                "to keep wounded service members alive as combat continued. ")
+        ending=("He continued serving the wounded and was recognized for his "
+                "courage and devotion to duty. ")
+        generated="\n\n".join([words*3,middle*3,ending*3])
+        rewritten=social_story(original,"tiktok",rewrite=lambda prompt,target:generated)
+        self.assertEqual(len(rewritten),3)
+        self.assertIn("grenade",rewritten[0]["narration"])
+        self.assertIn("Payoff",rewritten[-1]["heading"])
+        ungrounded=generated+" In 9999 he returned."
+        safe=social_story(original,"tiktok",rewrite=lambda prompt,target:ungrounded)
+        self.assertNotIn("9999",str(safe))
+
     def test_default_both_compat(self):
         with patch.object(engine,"QUEUE",self.root/"queue"):
             job=engine.create_job(
@@ -98,6 +116,23 @@ class ComfyAdapterTests(unittest.TestCase):
         self.path.write_text(json.dumps({"nodes":[{"type":"SaveImage"}]}))
         with self.assertRaises(local_video.LocalVideoError):
             local_video.load_workflow(self.path)
+    def test_reenactment_shot_has_explicit_screen_disclosure(self):
+        import studio,wave
+        from PIL import Image
+        pic=Path(self.temp.name)/"still.jpg"
+        Image.new("RGB",(640,360),(28,52,66)).save(pic)
+        audio=Path(self.temp.name)/"audio.wav"
+        with wave.open(str(audio),"wb") as f:
+            f.setnchannels(1)
+            f.setsampwidth(2)
+            f.setframerate(24000)
+            f.writeframes(b"\x00\x00"*24000)
+        result=Path(self.temp.name)/"AI_demo.mp4"
+        studio.mk_scene({"visual_provenance":"AI-generated illustration"},1,
+                        audio,1.0,pic,result,(320,180),10,"archival")
+        self.assertTrue(result.exists())
+        self.assertGreater(result.stat().st_size,1000)
+
     def test_mock_local_render_receives_video_file(self):
         video=b"\x00\x00\x00\x18ftypmp42"+b"x"*1500
         pid="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
