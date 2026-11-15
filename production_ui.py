@@ -715,12 +715,16 @@ class ProductionStudio(tk.Toplevel):
                 auto_media=self.media.get(),visual_style=self.STYLE_CHOICES[self.visual_style.get()],
                 deliverables=deliverables)
         except Exception as exc:messagebox.showerror('Invalid production request',str(exc),parent=self);return
-        self.refresh(j['id']);self.tabs.select(self.queue_page);self._log('Added '+j['id']+' to the production queue.')
+        self.stage_view.set('Needs work')
+        self.refresh(j['id']);self.tabs.select(self.queue_page)
+        self._log('Created '+j['id']+'. It will move to review when the draft is ready.')
         if self.start_immediately.get():self._run([j['id']])
 
     def _selection(self):
         ids=self.list.selection()
-        if not ids:messagebox.showwarning('Select a job','Select one production job first.',parent=self);return None
+        if not ids:
+            self.help_line.set('Select a production in the list first.')
+            return None
         return ids[0]
 
     def _run(self,ids):
