@@ -50,7 +50,7 @@ class App(tk.Tk):
         super().__init__()
         self.title("The Crow's Nest | Studio " + update_engine.VERSION)
         self.geometry('1160x830')
-        self.minsize(850,660)
+        self.minsize(740,520)
         self.configure(bg=INK)
         try:
             scale=float(update_engine.load_settings().get('ui_scale',1.0))
@@ -110,10 +110,25 @@ class App(tk.Tk):
                  font=('Segoe UI',10),anchor='w',justify='left',
                  wraplength=1060).pack(fill='x',padx=24,pady=(0,10))
 
+        self._page_scroll_canvases=[]
+        self._page_scroll_containers=[]
         def page(label):
-            frame=tk.Frame(self.tabs,bg=INK,padx=20,pady=19)
-            self.tabs.add(frame,text=label)
-            return frame
+            outer=tk.Frame(self.tabs,bg=INK)
+            self.tabs.add(outer,text=label)
+            canvas=tk.Canvas(outer,bg=INK,highlightthickness=0,borderwidth=0)
+            bar=ttk.Scrollbar(outer,orient='vertical',command=canvas.yview)
+            canvas.configure(yscrollcommand=bar.set)
+            bar.pack(side='right',fill='y')
+            canvas.pack(side='left',fill='both',expand=True)
+            inner=tk.Frame(canvas,bg=INK,padx=20,pady=19)
+            win=canvas.create_window((0,0),window=inner,anchor='nw')
+            inner.bind('<Configure>',lambda event,c=canvas:
+                       c.configure(scrollregion=c.bbox('all')))
+            canvas.bind('<Configure>',lambda event,c=canvas,w=win:
+                        c.itemconfigure(w,width=event.width))
+            self._page_scroll_canvases.append(canvas)
+            self._page_scroll_containers.append(outer)
+            return inner
 
         create=page('1 · STORY')
         voice=page('2 · VOICE')
@@ -309,14 +324,48 @@ class App(tk.Tk):
                 lambda event,idx=number-1:self.tabs.select(idx))
         self.bind_all('<Control-n>',lambda event:self.open_production_studio())
         self.bind_all('<Escape>',lambda event:self.stop_audio())
+        self.bind_all('<MouseWheel>',self._page_mouse_wheel,add='+')
+        self.bind_all('<Button-4>',self._page_mouse_wheel,add='+')
+        self.bind_all('<Button-5>',self._page_mouse_wheel,add='+')
         self.after(1800,self.auto_update_check)
         self.after(150,self.poll)
         self.after(10000,self.poll_chat_inbox)
         self.protocol('WM_DELETE_WINDOW',self.close)
 
-    def mouse_scroll(self, event):
-        # Notebook pages use their own native scrollable widgets.
-        return
+    def _page_mouse_wheel(self,event):
+        # Scroll the currently visible page without stealing wheel events from
+        # text editors, lists, or other windows.
+        try:
+            if event.widget.winfo_toplevel() is not self:
+                return
+            tab_index=self.tabs.index(self.tabs.select())
+            canvas=self._page_scroll_canvases[tab_index]
+            outer=self._page_scroll_containers[tab_index]
+            widget=event.widget
+            while widget is not None and widget is not self:
+                if isinstance(widget,(tk.Text,tk.Listbox,ttk.Treeview,ttk.Combobox)):
+                    return
+                if widget is outer:
+                    break
+                widget=widget.master
+            if widget is not outer:
+                return
+            if event.num==4:
+                units=-2
+            elif event.num==5:
+                units=2
+            elif getattr(event,'delta',0):
+                delta=event.delta
+                units=-int(delta/120) if abs(delta)>=120 else (-1 if delta>0 else 1)
+            else:
+                return
+            canvas.yview_scroll(units,'units')
+            return 'break'
+        except (tk.TclError,IndexError):
+            return
+
+    def mouse_scroll(self,event):
+        return self._page_mouse_wheel(event)
 
     def _label(self, parent, label):
         tk.Label(parent, text=label, fg=GOLD, bg=INK,
