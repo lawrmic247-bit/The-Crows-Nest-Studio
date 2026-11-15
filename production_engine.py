@@ -22,7 +22,7 @@ import uuid
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-from story_variants import distill_story, available_outputs
+from story_variants import social_story, available_outputs
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('LOCALAPPDATA') or Path.home()/'.local'/'share')/'TheCrowsNestStudio'
@@ -392,7 +392,7 @@ def make_research_leads(topic: str, dest: Path) -> Path:
     return dest
 
 
-def create_story_companions(job:dict,main:dict)->dict[str,str]:
+def create_story_companions(job:dict,main:dict,*,rewrite=None)->dict[str,str]:
     """Write independently fact-checkable manifests from the same full story."""
     variants={}
     outputs=job.get('deliverables') or ['full']
@@ -401,7 +401,7 @@ def create_story_companions(job:dict,main:dict)->dict[str,str]:
     for target in ('shorts','tiktok'):
         if target not in outputs:
             continue
-        scenes=distill_story(main['scenes'],target)
+        scenes=social_story(main['scenes'],target,rewrite=rewrite)
         originals=main['scenes']
         # Reuse original footage when appropriate, but never invent provenance.
         pointers=(0,len(originals)//2,len(originals)-1)
@@ -522,7 +522,10 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
         path=EPISODES/(slug+'.json');atomic_json(path,manifest)
         from fact_checker import sync_report,save_report
         report=sync_report(slug,title,'\n\n'.join(s['narration'] for s in scenes));save_report(report)
-        variants=create_story_companions(job,manifest)
+        variants=create_story_companions(
+            job,manifest,rewrite=lambda prompt,target:
+                ollama_generate(job['model'],prompt,
+                                predict=380 if target=='shorts' else 500))
         if not variants:raise ValueError('No video outputs were selected.')
         primary=variants.get('full') or next(iter(variants.values()))
         words=sum(len(s['narration'].split()) for s in scenes)
