@@ -734,13 +734,20 @@ class ProductionStudio(tk.Toplevel):
         if p:self.notes.set(p)
 
     def add_job(self):
-        if self.start_immediately.get():
-            try:
-                self.model.set(engine.select_local_model(self.model.get()))
-            except engine.OllamaSetupError as exc:
-                self._log(str(exc))
-                self.model_setup(on_select=lambda name:self.add_job())
-                return
+        # Advanced creation uses the model explicitly selected in the main Step 1,
+        # not a silently substituted fallback.
+        configured=update_engine.load_settings().get('ollama_model','')
+        try:
+            installed=engine.list_local_models()
+        except engine.OllamaSetupError as exc:
+            self._log('Choose a writing model first: '+str(exc))
+            self.model_setup(on_select=lambda name:self.model.set(name))
+            return
+        if not configured or configured not in installed:
+            self._log('Select an installed Ollama writing model before adding a production.')
+            self.model_setup(on_select=lambda name:self.model.set(name))
+            return
+        self.model.set(configured)
         try:
             deliverables=[key for key,flag in (
                 ('full',self.want_full),('shorts',self.want_shorts),('tiktok',self.want_tiktok))
@@ -770,6 +777,17 @@ class ProductionStudio(tk.Toplevel):
             self._log('Production is already running; it will advance automatically after drafting.')
             return
         if not ids:return
+        configured=update_engine.load_settings().get('ollama_model','')
+        try:
+            installed=engine.list_local_models()
+        except engine.OllamaSetupError as exc:
+            self._log('Select a writing model before retrying: '+str(exc))
+            return
+        if not configured or configured not in installed:
+            self._log('No verified writing model selected. Go to Step 1 and choose one.')
+            return
+        for ident in ids:
+            engine.change(ident,model=configured)
         self.busy=True
         self._sync_primary()
         def worker():
