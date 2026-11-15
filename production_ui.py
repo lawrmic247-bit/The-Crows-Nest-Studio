@@ -337,6 +337,8 @@ class ProductionStudio(tk.Toplevel):
                                     command=self.clear_waiting)
         self.manage_menu.add_command(label='Clear completed productions from list',
                                     command=self.clear_completed)
+        self.manage_menu.add_command(label='Move all review-ready drafts to library',
+                                    command=self.move_ready_to_library)
         self.manage_menu.add_separator()
         self.manage_menu.add_command(label='Move selected to library',
                                     command=self.archive_selected)
@@ -681,6 +683,22 @@ class ProductionStudio(tk.Toplevel):
         done=engine.clear_completed_from_queue()
         self.refresh()
         self._log(f'Cleared {done} completed entries. Exported videos remain on disk.')
+
+    def move_ready_to_library(self):
+        count=len(engine.list_stage_jobs('review'))
+        if not count:
+            self._log('No review-ready drafts to move.')
+            return
+        if not messagebox.askyesno('Move ready drafts to library?',
+            f'Move {count} unreviewed draft(s) to the project library?\n\n'
+            'They will remain editable and none of their source files will be deleted. '
+            'They will no longer be listed as Ready for review.',
+            parent=self):
+            return
+        moved=engine.move_ready_drafts_to_library()
+        self.stage_view.set('Completed / Library')
+        self.refresh()
+        self._log(f'Moved {moved} drafts to the library without deleting scripts.')
 
     def archive_selected(self):
         ident=self._selection()
