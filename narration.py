@@ -50,7 +50,7 @@ _ONES = ('zero','one','two','three','four','five','six','seven','eight','nine',
 _TENS = ('','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety')
 _DECADES = {20:'twenties',30:'thirties',40:'forties',50:'fifties',
             60:'sixties',70:'seventies',80:'eighties',90:'nineties'}
-_YEAR_PATTERN = re.compile(r'(?<![\w])((?:1[0-9]{3}|20[0-9]{2}))(s?)(?![\w])')
+_YEAR_PATTERN = re.compile(r'(?<![\w/])((?:1[0-9]{3}|20[0-9]{2}))(s?)(?![\w/])')
 
 _MONTHS = ('January','February','March','April','May','June','July','August',
            'September','October','November','December')
