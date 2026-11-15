@@ -39,12 +39,13 @@ jobs:
           from fact_checker_ui import FactCheckDialog
           app = App()
           app.update_idletasks()
-          assert len(app.tabs.tabs()) == 4
+          assert len(app.tabs.tabs()) == 5
           voice = VoiceStudio(app)
           voice.update_idletasks()
           voice.close()
           queue = ProductionStudio(app)
           queue.update_idletasks()
+          assert len(queue.tabs.tabs()) == 3
           queue.destroy()
           review = FactCheckDialog(app, 'ci-smoke', 'Test history',
                                    'Historical lookouts watched for approaching ships.')
