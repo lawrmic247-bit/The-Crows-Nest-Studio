@@ -305,6 +305,115 @@ def change(job_id:str, **fields)->dict:
         return old
 
 
+OLLAMA_BASE = "http://127.0.0.1:11434"
+RECOMMENDED_TEXT_MODEL = "qwen3:4b"
+MODEL_PREFERENCE = ("qwen3:8b","qwen3:4b","qwen2.5:7b","gemma3:4b",
+                    "llama3.2:3b","qwen2.5:3b","llama3.1:8b")
+
+
+class OllamaSetupError(RuntimeError):
+    """Local Ollama missing, unreachable, or no text model downloaded."""
+
+
+def list_local_models(*, request=None) -> list[str]:
+    """Find actual installed Ollama models, without downloading anything."""
+    request = request or urllib.request.urlopen
+    req = urllib.request.Request(OLLAMA_BASE+"/api/tags",
+                                 headers={"Accept":"application/json"})
+    try:
+        with request(req,timeout=6) as response:
+            raw=response.read(1_000_001)
+        if len(raw)>1_000_000:
+            raise OllamaSetupError("Ollama returned an unexpectedly large model list.")
+        parsed=json.loads(raw.decode("utf-8"))
+        records=parsed.get("models",[])
+        if not isinstance(records,list):
+            raise ValueError("Invalid model list.")
+        installed=[]
+        for record in records[:500]:
+            name=record.get("name","") if isinstance(record,dict) else ""
+            if isinstance(name,str) and re.fullmatch(r"[\w.:-]{2,100}",name):
+                installed.append(name)
+        return sorted(set(installed))
+    except urllib.error.HTTPError as exc:
+        raise OllamaSetupError("Ollama responded, but model discovery failed (HTTP "
+                +str(exc.code)+"). Update or restart Ollama, then try Check models.") from exc
+    except (urllib.error.URLError,ConnectionError,TimeoutError,OSError) as exc:
+        raise OllamaSetupError("Ollama is not running on this computer. Install or start "
+               "Ollama, then return to Text model setup.") from exc
+    except (ValueError,UnicodeError,TypeError) as exc:
+        raise OllamaSetupError("Ollama returned an invalid model list. "
+                               "Update or restart Ollama.") from exc
+
+
+def select_local_model(preferred:str='',*, installed:list[str]|None=None)->str:
+    """Choose an installed model; never request a phantom checkpoint."""
+    installed=list_local_models() if installed is None else installed
+    if not installed:
+        raise OllamaSetupError("Ollama is running but no text model is installed. "
+            "Open Text model setup and click Install recommended model (qwen3:4b).")
+    if preferred in installed:
+        return preferred
+    for choice in MODEL_PREFERENCE:
+        if choice in installed:
+            return choice
+    return installed[0]
+
+
+def pull_local_model(model:str=RECOMMENDED_TEXT_MODEL,*,progress=None,request=None)->str:
+    """Explicit user-initiated local Ollama download with streamed status."""
+    if not isinstance(model,str) or not re.fullmatch(r"[\w.:-]{2,100}",model):
+        raise ValueError("Invalid Ollama model name.")
+    request=request or urllib.request.urlopen
+    req=urllib.request.Request(OLLAMA_BASE+"/api/pull",
+          data=json.dumps({"name":model,"stream":True}).encode("utf-8"),
+          headers={"Content-Type":"application/json"},method="POST")
+    try:
+        with request(req,timeout=3600) as response:
+            last=""
+            total=0
+            for item in response:
+                total+=len(item)
+                if total>8_000_000:
+                    raise OllamaSetupError("Ollama sent too many progress messages.")
+                if not item.strip():
+                    continue
+                data=json.loads(item.decode("utf-8"))
+                if data.get("error"):
+                    raise OllamaSetupError("Ollama could not install "+model+": "+str(data["error"])[:280])
+                note=str(data.get("status","Downloading"))[:120]
+                size=data.get("total")
+                done=data.get("completed")
+                if isinstance(size,(int,float)) and size>0 and isinstance(done,(int,float)):
+                    note+=" — "+str(round(100*done/size))+"%"
+                if note!=last and progress:
+                    progress(note)
+                last=note
+    except urllib.error.HTTPError as exc:
+        detail=exc.read(2048).decode("utf-8","replace")
+        raise OllamaSetupError("Ollama cannot download "+model+" (HTTP "
+                  +str(exc.code)+"). "+detail[:180]) from exc
+    except (urllib.error.URLError,ConnectionError,TimeoutError,OSError) as exc:
+        raise OllamaSetupError("Download interrupted. Make sure Ollama is running "
+                               "and your internet connection works.") from exc
+    installed=list_local_models()
+    if model not in installed:
+        raise OllamaSetupError("Ollama finished downloading but "+model+
+                               " isn't listed yet. Refresh model discovery.")
+    return model
+
+
+def prepare_job_model(job_id:str,*, installed:list[str]|None=None)->str:
+    """Resolve an installed model before any online research or drafting."""
+    job=get_job(job_id)
+    selected=select_local_model(job.get("model",""),installed=installed)
+    if selected!=job.get("model"):
+        change(job_id,model=selected,
+               progress="Using installed Ollama model "+selected+
+               " instead of unavailable "+str(job.get("model",""))+".")
+    return selected
+
+
 def ollama_generate(model:str,prompt:str,*,predict:int=1400,request=None)->str:
     payload={'model':model,'prompt':prompt,'stream':False,'options':{'temperature':0.45,'num_predict':predict}}
     data=json.dumps(payload).encode('utf-8')
@@ -319,8 +428,21 @@ def ollama_generate(model:str,prompt:str,*,predict:int=1400,request=None)->str:
         text=str(answer.get('response','')).strip()
         if not text:raise RuntimeError('Ollama returned an empty response. Try a different local model.')
         return text
-    except (urllib.error.URLError,ConnectionError) as exc:
-        raise RuntimeError('Ollama is not available locally. Install Ollama, run `ollama pull qwen3:8b`, and retry. '+str(exc)) from exc
+    except urllib.error.HTTPError as exc:
+        raw=exc.read(2_048).decode('utf-8','replace')
+        try:
+            detail=str(json.loads(raw).get('error',''))
+        except (ValueError,TypeError):
+            detail=raw[:200]
+        if exc.code==404:
+            raise OllamaSetupError('Ollama cannot find text model '+model+
+                '. Open Text model setup and select an installed model, or install qwen3:4b. '+
+                detail[:180]) from exc
+        raise OllamaSetupError('Ollama generation failed (HTTP '+str(exc.code)+
+                '): '+detail[:210]) from exc
+    except (urllib.error.URLError,ConnectionError,TimeoutError,OSError) as exc:
+        raise OllamaSetupError('Ollama is not reachable. Start Ollama or open '
+                'Text model setup; the research sources are preserved. '+str(exc)) from exc
 
 
 def _search_terms(prompt:str)->str:
@@ -714,6 +836,12 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
         if progress:progress(text)
     try:
         prepared_file=job.get('prepared_scenes_file','')
+        # Check that the model actually exists BEFORE searching for sources.
+        # A previously retrieved brief is reused on retry after installation.
+        if not prepared_file and script_generator is generate_scenes:
+            resolved=prepare_job_model(job_id)
+            job=get_job(job_id)
+            if progress:progress('Local Ollama model ready: '+resolved)
         research_report=None
         if not prepared_file and not job.get('notes_file') and script_generator is generate_scenes:
             emit('researching','Finding source leads from Wikipedia and the Library of Congress...',0)
@@ -784,7 +912,7 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
         return result
     except Exception as exc:
         msg=str(exc)
-        status='needs_model' if 'ollama' in msg.lower() or 'model' in msg.lower() else 'failed'
+        status='needs_model' if isinstance(exc,OllamaSetupError) or 'ollama' in msg.lower() or 'model' in msg.lower() else 'failed'
         change(job_id,status=status,error=msg,progress=msg[:250])
         raise
 
