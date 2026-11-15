@@ -1,3 +1,22 @@
+# STUDIO 4.5 — THE DOCUMENTARY PRODUCTION WORKSPACE
+
+The Crow's Nest Studio is organized like a small documentary production house, rather than a collection of setup utilities.
+
+**One straightforward path:**
+1. **NEW PRODUCTION** — describe the subject, select film length, visual treatment, and Full / YouTube Short / TikTok. Click **RESEARCH & BUILD STORY**. Studio finds source leads and creates separate unverified scripts. No user-supplied research file is required.
+2. **STORY & SOURCES** — review the discovered references and edit the narration. Switch formats without losing edits. Use **Fact checker** to review the evidence behind each version's claims.
+3. **NARRATION** — choose a voice, hear a preview, and create the audio. The pronunciation dictionary remains separate from visible subtitles and historical wording.
+4. **FACTS & RENDER** — approve factual claims and licensed footage. One active story is rendered at a time in the selected aspect ratio; switching aspect does not rewrite the script.
+5. **SCREENING ROOM** — preview the completed MP4 and explicitly approve a Buffer composer handoff. **No video is uploaded automatically.**
+
+**Where everything else went:** **Open films and queue** in the sidebar is the project library. Advanced controls for Ollama, custom research notes, ComfyUI/Wan workflows, and private ChatGPT file handoff are behind the library's Integrations/Advanced Create pages. If a language model is missing, the new production flow opens the model picker automatically rather than failing with an unexplained HTTP 404.
+
+**Display and navigation:** a calm low-glare documentary palette, fixed production-sidebar, clear stage markers, vertical page scrolling, dedicated script scrolling, mouse-wheel support, 90–140% font scaling, and a soft-light alternative. Use the main **+ NEW FILM** button to start clean; it offers to save any unsaved current script.
+
+**Reliability:** source checks and media-rights gates still apply independently to each derived documentary. Model downloads require user approval and available disk space. Generative reenactments need a separately configured compatible GPU and ComfyUI workflow; the app can use archival stills if not configured. Windows playback, third-party uploads and GPU inference still require confirmation on the user's PC; GitHub's Linux GUI and regression tests do not prove those physical-device integrations.
+
+---
+
 # CROW'S NEST STUDIO 4.4 — RESEARCH FIRST, THEN FACT CHECK
 
 **Quick AI no longer asks you to provide a TXT research file.**
