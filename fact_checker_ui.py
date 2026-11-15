@@ -11,17 +11,17 @@ from fact_checker import (mark_claim, report_markdown, research_url, safe_url,
                           wiki_candidates)
 
 SOFT_LIGHT=update_engine.load_settings().get('appearance')=='soft_light'
-DARK='#f2f5f2' if SOFT_LIGHT else '#202a33'
-PANEL='#dfe7e2' if SOFT_LIGHT else '#303d49'
-GOLD='#477669' if SOFT_LIGHT else '#9fc5bc'
-LIGHT='#23382f' if SOFT_LIGHT else '#e0e6e8'
-GREY='#50695f' if SOFT_LIGHT else '#bac7ce'
-HEADING_BG='#b7cbbb' if SOFT_LIGHT else '#425260'
+DARK='#F1F4F4' if SOFT_LIGHT else '#0C121B'
+PANEL='#FFFFFF' if SOFT_LIGHT else '#182330'
+GOLD='#2F6758' if SOFT_LIGHT else '#D7B47B'
+LIGHT='#253640' if SOFT_LIGHT else '#EDF2F4'
+GREY='#60747C' if SOFT_LIGHT else '#A1B1BD'
+HEADING_BG='#DAE5DF' if SOFT_LIGHT else '#223343'
 
 class FactCheckDialog(tk.Toplevel):
     def __init__(self,parent,slug:str,title:str,script:str,source_leads:Path|None=None):
         super().__init__(parent)
-        self.title(f'Fact Check — {title}')
+        self.title(f"The Crow's Nest | Editorial Clearance — {title}")
         self.geometry('1020x760')
         self.minsize(780,590)
         self.configure(bg=DARK)
@@ -30,7 +30,7 @@ class FactCheckDialog(tk.Toplevel):
                         foreground=LIGHT,font=('Segoe UI',10),rowheight=31)
         style.configure('Evidence.Treeview.Heading',background=HEADING_BG,
                         foreground=LIGHT,font=('Segoe UI',11,'bold'))
-        style.map('Evidence.Treeview',background=[('selected','#48655e')],
+        style.map('Evidence.Treeview',background=[('selected','#2E4C53')],
                   foreground=[('selected','#ffffff')])
         self.report=sync_report(slug,title,script)
         self.source_leads=Path(source_leads) if source_leads else None
