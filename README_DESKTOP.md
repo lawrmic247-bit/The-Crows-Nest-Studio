@@ -1,3 +1,17 @@
+# THE CROW'S NEST STUDIO 4.6 — CLEAR PRODUCTION STAGES
+
+Studio's film library now separates production states instead of dumping every job into the same queue:
+
+- **Needs work:** Waiting, failed, or currently generating. The primary button starts or retries work, or opens the model setup if needed.
+- **Ready for review:** Drafts move here automatically when researched and written. One **Continue in Main Studio** action opens the requested Full, YouTube Short or TikTok script. When one job finishes while its library is open, Studio opens it directly in the editor and closes the extra window.
+- **Completed / Library:** Finished productions and drafts already handed off to the editor live here; they're no longer mixed with waiting work.
+
+**One button and one menu:** The library now shows **Continue**, an output-version selector and **Manage ▾**. That menu contains **Delete selected queue entry**, **Clear waiting / failed queue**, **Clear completed productions from list**, archive/restore, source credits, research leads and activity. Deletes are tracking-only: original research, script files, audio, image files and exported MP4s remain on disk. Running work cannot be deleted in the middle of processing. Removed requests from a synced ChatGPT inbox are remembered and won't reappear automatically.
+
+There are still explicit fact-check and media-rights approvals before rendering, and Buffer publishing still requires manual approval. Queue cleanup does not bypass these controls or delete source evidence.
+
+---
+
 # STUDIO 4.5 — THE DOCUMENTARY PRODUCTION WORKSPACE
 
 The Crow's Nest Studio is organized like a small documentary production house, rather than a collection of setup utilities.
