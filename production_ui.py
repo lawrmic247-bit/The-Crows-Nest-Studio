@@ -157,7 +157,7 @@ class ProductionStudio(tk.Toplevel):
         self.voice=tk.StringVar(value=default_voice)
         self.media=tk.BooleanVar(value=True)
         self.start_immediately=tk.BooleanVar(value=True)
-        self.state=tk.StringVar(value='Enter an idea, create an episode, then review it in the editor.')
+        self.state=tk.StringVar(value='Ready for review is the next step after research finishes.')
         style=ttk.Style(self)
         style.configure('Queue.Primary.TButton',font=('Segoe UI',10,'bold'),
                         padding=(17,11),background=GOLD,
@@ -276,48 +276,94 @@ class ProductionStudio(tk.Toplevel):
         tk.Label(create,text='New episodes are unverified drafts until you review their evidence.',
                  bg=NAVY,fg=MUTED,font=('Segoe UI',10)).pack(anchor='w',pady=(8,0))
 
-        self._heading(queue,'Your documentary projects',16)
-        select_row=tk.Frame(queue,bg=NAVY);select_row.pack(fill='x',pady=(0,10))
-        tk.Label(select_row,text='Version to edit:',bg=NAVY,fg=CREAM,
-                 font=('Segoe UI',10,'bold')).pack(side='left',padx=(0,12))
-        ttk.Combobox(select_row,textvariable=self.output_choice,state='readonly',
-               values=['Full documentary','YouTube Short','TikTok'],
-               width=23).pack(side='left')
-        tk.Label(select_row,text='Each version has its own source-review checklist.',
-                 bg=NAVY,fg=MUTED,font=('Segoe UI',10)).pack(side='left',padx=(12,0))
-        tk.Label(queue,text='Select an episode to open its draft, view research leads, '
-                 'or inspect media credits.',bg=NAVY,fg=MUTED,
-                 font=('Segoe UI',11),wraplength=900,justify='left').pack(
-                     anchor='w',pady=(0,13))
-        listing=tk.Frame(queue,bg=NAVY);listing.pack(fill='both',expand=True)
+        self._heading(queue,'Projects, not a pile of queue entries',16)
+        tk.Label(queue,text='Drafts automatically move to Ready for review. '
+                 'Open one to continue editing in the main studio; finished films '
+                 'remain in your library.',
+                 bg=NAVY,fg=MUTED,font=('Segoe UI',11),wraplength=880,
+                 justify='left').pack(anchor='w',pady=(2,13))
+        status_bar=tk.Frame(queue,bg=PANEL,padx=15,pady=13)
+        status_bar.pack(fill='x',pady=(0,12))
+        tk.Label(status_bar,text='SHOW',bg=PANEL,fg=MUTED,
+                 font=('Segoe UI',9,'bold')).pack(side='left',padx=(0,12))
+        self.stage_view=tk.StringVar(value='Ready for review')
+        self.stage_selector=ttk.Combobox(status_bar,textvariable=self.stage_view,
+                 state='readonly',width=24,
+                 values=('Ready for review','Needs work','Completed / Library'))
+        self.stage_selector.pack(side='left')
+        self.stage_selector.bind('<<ComboboxSelected>>',lambda event:self.refresh())
+        self.stage_summary=tk.StringVar(value='')
+        tk.Label(status_bar,textvariable=self.stage_summary,
+                 bg=PANEL,fg=MUTED,font=('Segoe UI',9),
+                 anchor='e').pack(side='right',padx=(10,0))
+        listing=tk.Frame(queue,bg=NAVY)
+        listing.pack(fill='both',expand=True,pady=(0,11))
         self.list=ttk.Treeview(listing,style='Queue.Treeview',
-                    columns=('state','duration','created'),show='tree headings',height=9)
-        self.list.heading('#0',text='Episode')
-        self.list.column('#0',width=375)
-        self.list.heading('state',text='Status');self.list.column('state',width=140)
-        self.list.heading('duration',text='Target');self.list.column('duration',width=80,anchor='center')
-        self.list.heading('created',text='Created (UTC)');self.list.column('created',width=140)
+                     columns=('state','duration'),show='tree headings',height=11)
+        self.list.heading('#0',text='PRODUCTION')
+        self.list.column('#0',width=490)
+        self.list.heading('state',text='STAGE')
+        self.list.column('state',width=155)
+        self.list.heading('duration',text='RUN TIME')
+        self.list.column('duration',width=90,anchor='center')
         scroll=ttk.Scrollbar(listing,command=self.list.yview)
         self.list.configure(yscrollcommand=scroll.set)
         self.list.pack(side='left',fill='both',expand=True)
         scroll.pack(side='left',fill='y')
-        row=tk.Frame(queue,bg=NAVY);row.pack(fill='x',pady=(12,8))
-        ttk.Button(row,text='OPEN SELECTED SCRIPT',style='Queue.Primary.TButton',
-                   command=self.open_draft).pack(side='left',padx=(0,8))
-        self.run_btn=ttk.Button(row,text='Run pending',command=self.run_queue)
-        self.run_btn.pack(side='left',padx=(0,8))
-        self.selected_btn=ttk.Button(row,text='Retry selected',command=self.run_selected)
-        self.selected_btn.pack(side='left',padx=(0,8))
-        ttk.Button(row,text='Refresh',command=self.refresh).pack(side='left')
-        ttk.Button(row,text="Text model setup",
-                   command=self.model_setup).pack(side="left",padx=(9,0))
-        row=tk.Frame(queue,bg=NAVY);row.pack(fill='x',pady=(0,12))
-        ttk.Button(row,text='Media credits',command=self.open_credits).pack(side='left',padx=(0,8))
-        ttk.Button(row,text='Research leads',command=self.open_leads).pack(side='left',padx=(0,8))
-        ttk.Button(row,text='Job folder',command=self.open_job_folder).pack(side='left')
-        self.log=scrolledtext.ScrolledText(queue,height=5,wrap='word',
-                  bg=PANEL,fg=CREAM,font=('Consolas',10),relief='flat',padx=10,pady=9)
-        self.log.pack(fill='x')
+        self.list.bind('<<TreeviewSelect>>',self._sync_primary)
+        self.list.bind('<Double-1>',lambda event:self.primary_action())
+        action_row=tk.Frame(queue,bg=NAVY)
+        action_row.pack(fill='x',pady=(0,12))
+        self.primary_btn=ttk.Button(action_row,text='CONTINUE TO REVIEW',
+                                   style='Queue.Primary.TButton',
+                                   command=self.primary_action)
+        self.primary_btn.pack(side='left',padx=(0,12))
+        self.run_btn=self.primary_btn
+        self.selected_btn=self.primary_btn
+        tk.Label(action_row,text='VERSION',bg=NAVY,fg=MUTED,
+                 font=('Segoe UI',9,'bold')).pack(side='left',padx=(8,6))
+        ttk.Combobox(action_row,textvariable=self.output_choice,
+                state='readonly',width=18,
+                values=('Full documentary','YouTube Short','TikTok')).pack(side='left')
+        actions=tk.Menubutton(action_row,text='Manage  ▾',
+                  bg=PANEL,fg=CREAM,activebackground=HEADING_BG,
+                  activeforeground=CREAM,relief='flat',
+                  font=('Segoe UI',10),padx=12,pady=9,cursor='hand2')
+        actions.pack(side='right')
+        self.manage_menu=tk.Menu(actions,tearoff=False)
+        self.manage_menu.add_command(label='Delete selected queue entry',
+                                    command=self.delete_selected)
+        self.manage_menu.add_command(label='Clear waiting / failed queue',
+                                    command=self.clear_waiting)
+        self.manage_menu.add_command(label='Clear completed productions from list',
+                                    command=self.clear_completed)
+        self.manage_menu.add_separator()
+        self.manage_menu.add_command(label='Move selected to library',
+                                    command=self.archive_selected)
+        self.manage_menu.add_command(label='Restore selected to review',
+                                    command=self.restore_selected)
+        self.manage_menu.add_separator()
+        self.manage_menu.add_command(label='View research sources',
+                                    command=self.open_leads)
+        self.manage_menu.add_command(label='View image credits',
+                                    command=self.open_credits)
+        self.manage_menu.add_command(label='Open production files',
+                                    command=self.open_job_folder)
+        self.manage_menu.add_command(label='Refresh',
+                                    command=self.refresh)
+        self.manage_menu.add_command(label='Activity log',
+                                    command=self.toggle_activity)
+        actions.configure(menu=self.manage_menu)
+        self.help_line=tk.StringVar(value='Select a production to see the next step.')
+        tk.Label(queue,textvariable=self.help_line,bg=NAVY,fg=MUTED,
+                 font=('Segoe UI',10),wraplength=870,
+                 justify='left').pack(anchor='w',pady=(0,7))
+        self.log=scrolledtext.ScrolledText(queue,height=6,wrap='word',
+                   bg=PANEL,fg=CREAM,font=('Consolas',10),
+                   relief='flat',padx=10,pady=9)
+        # The log remains accessible under Manage, but no longer steals the
+        # production library's limited visible area.
+        self.activity_visible=False
         footer=tk.Frame(self,bg=PANEL,padx=17,pady=12)
         footer.pack(fill='x')
         tk.Label(footer,textvariable=self.state,anchor='w',wraplength=900,
