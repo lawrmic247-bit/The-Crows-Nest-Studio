@@ -20,6 +20,13 @@ class FakeResponse:
 class ResearchDiscoveryTests(unittest.TestCase):
     def fetch(self,request,timeout=12):
         address=request.full_url
+        if address.startswith("https://en.wikipedia.org/w/api.php"):
+            return FakeResponse({"query":{"pages":[{
+                "title":"Donald E. Ballard",
+                "extract":"Donald E. Ballard served as a Navy corpsman in Vietnam. "
+                          "This is a secondary overview and must be compared "
+                          "with the original Medal of Honor citation and independent records."
+            }]}})
         if address.startswith("https://en.wikipedia.org/w/rest.php/"):
             return FakeResponse({"pages":[
                 {"title":"Donald E. Ballard","key":"Donald_E._Ballard",
@@ -50,6 +57,7 @@ class ResearchDiscoveryTests(unittest.TestCase):
         self.assertIn("https://en.wikipedia.org/wiki/Donald_E._Ballard",brief)
         self.assertIn("https://www.loc.gov/item/1234/",brief)
         self.assertIn("UNVERIFIED",brief)
+        self.assertIn("secondary overview",brief)
 
     def test_missing_internet_creates_warning_without_fabricating_references(self):
         def offline(request,timeout=12):
