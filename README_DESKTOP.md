@@ -1,3 +1,21 @@
+# STUDIO 4.7 — GUIDED DOCUMENTARY PRODUCTION
+
+The main window is a five-stage guided production wizard with a **fixed Back / Continue bar**. Later steps remain locked until their prerequisites are complete. Every required task appears on the same page where it is needed.
+
+1. **STEP 1 · BRIEF + MODEL FIRST.** Choose an installed **Ollama script-writing model first**. Studio checks the actual installed models; if none is available, use **Install / setup** right there. Then enter your topic, film length, visual treatment and Full/Shorts/TikTok outputs. **Continue** verifies that the exact model you selected still exists before any automatic research or writing starts. An animated-realism choice also verifies that a compatible local ComfyUI workflow is selected and running before research starts. A saved explicit model can be reused for later films.
+2. **STEP 2 · RESEARCH + SCRIPT + SOURCE REVIEW.** Studio retrieves source leads and drafts the different scripts. Inspect the original research links, edit the text, and use the **embedded evidence desk on the SAME PAGE**. Clear every factual claim with supporting evidence or an appropriate documented editorial exemption before Continue unlocks narration. Source leads alone never count as verification.
+3. **STEP 3 · NARRATION.** Pick a voice, generate the complete scene-by-scene narration, **play the generated audio**, and check the approval box. Continue refuses to advance when audio is absent, unplayed or unapproved. Changing the manuscript or voice invalidates earlier audio approvals.
+4. **STEP 4 · MEDIA + RENDER.** The editor displays the selected visual assets and their provenance. If local AI reenactments were selected, Continue **first prepares those clips after factual clearance**, then displays them for rights and relevance review; it changes to **Render the Video** only after preparation. Generated AI scenes are labeled illustrative. Asset rights must be approved **after** all generated clips are present. Rendering will never secretly add new footage after rights approval, or secretly generate a missing narration track.
+5. **STEP 5 · SCREEN + PUBLISH.** Preview the completed MP4. Confirm the final upload explicitly, then Studio opens the Buffer composer and export folder. **Nothing is automatically published.**
+
+**Model selection is not buried in Settings.** The first production page shows the current locally installed Ollama choices. Imported ChatGPT inbox jobs and Advanced Create also require a previously explicitly chosen installed writing model before beginning automatic generation; unconfigured imports wait safely in Needs Work.
+
+**Simple UI:** cinematic Crow's Nest sidebar, persistent Back / Continue, low-glare dark and soft-light themes, adjustable text scale, scrollable pages, project library with queue/review/archive stages, and one primary next action. Technical integrations live in Tools rather than interrupting the normal workflow. Only advanced operations or external media viewers may open separate windows.
+
+**Verification limits:** automated GitHub regressions cover code, offline model preflight, app-window launch and simulated transitions. Real Windows speaker playback, chosen ComfyUI workflow and GPU performance, third-party Buffer publishing, and archival licensing still require validation in the target environment.
+
+---
+
 # THE CROW'S NEST STUDIO 4.6 — CLEAR PRODUCTION STAGES
 
 Studio's film library now separates production states instead of dumping every job into the same queue:
