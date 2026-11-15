@@ -130,7 +130,8 @@ jobs:
                patch('gui.filedialog.askopenfilename',side_effect=AssertionError('Unexpected research notes prompt')), \
                patch('gui.production_engine.create_job',return_value={'id':'aabbccddeeff'}), \
                patch.object(app,'_run_task') as run:
-              app.prompt_draft()
+              with patch('gui.production_engine.select_local_model',return_value='qwen3:4b'):
+                  app.prompt_draft()
               assert run.call_count==1
           with tempfile.TemporaryDirectory() as directory:
               path=Path(directory)/'sources.json'
