@@ -130,13 +130,21 @@ class App(tk.Tk):
         sidebar=tk.Frame(shell,bg=NAV_BG,width=246)
         sidebar.pack(side='left',fill='y')
         sidebar.pack_propagate(False)
-        mark=tk.Frame(sidebar,bg=NAV_BG,padx=23,pady=28)
+        mark=tk.Frame(sidebar,bg=NAV_BG,padx=18,pady=24)
         mark.pack(fill='x')
-        tk.Label(mark,text='THE CROW\'S NEST',bg=NAV_BG,fg=CREAM,
-                 font=('Segoe UI',16,'bold'),anchor='w').pack(fill='x')
-        tk.Label(mark,text='DOCUMENTARY PRODUCTION STUDIO',
-                 bg=NAV_BG,fg=GOLD,font=('Segoe UI',9,'bold'),
-                 anchor='w').pack(fill='x',pady=(7,0))
+        brand=tk.Frame(mark,bg=NAV_BG)
+        brand.pack(fill='x')
+        seal=tk.Frame(brand,bg=GOLD,width=41,height=41)
+        seal.pack(side='left',padx=(0,10))
+        seal.pack_propagate(False)
+        tk.Label(seal,text='CN',bg=GOLD,fg=CTA_FG,
+                 font=('Segoe UI',13,'bold')).pack(expand=True)
+        wordmark=tk.Frame(brand,bg=NAV_BG)
+        wordmark.pack(side='left',fill='x',expand=True)
+        tk.Label(wordmark,text="CROW'S NEST",bg=NAV_BG,fg=CREAM,
+                 font=('Segoe UI',12,'bold'),anchor='w').pack(fill='x')
+        tk.Label(wordmark,text='FILM STUDIO',bg=NAV_BG,fg=GOLD,
+                 font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',pady=(4,0))
         tk.Frame(sidebar,bg=BORDER,height=1).pack(fill='x',padx=22,pady=(0,24))
         tk.Label(sidebar,text='PRODUCTION PIPELINE',bg=NAV_BG,fg=MUTED,
                  font=('Segoe UI',9,'bold'),anchor='w').pack(fill='x',padx=24,pady=(0,9))
