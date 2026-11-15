@@ -259,6 +259,28 @@ jobs:
           finally:
               app.close()
           PY
+      - name: Capture simplified project library for visual QA
+        run: |
+          xvfb-run -a -s "-screen 0 1280x1024x24" python - <<'PY'
+          import base64,io
+          from PIL import ImageGrab
+          from gui import App
+          from production_ui import ProductionStudio
+          app=App()
+          app.geometry('1160x830+0+0')
+          library=ProductionStudio(app)
+          library.geometry('1060x800+0+0')
+          library.update()
+          try:
+              shot=ImageGrab.grab(bbox=(0,0,1060,800)).convert('RGB')
+              shot.thumbnail((795,600))
+              out=io.BytesIO()
+              shot.save(out,format='JPEG',quality=65,optimize=True)
+              print('CROWS_LIBRARY_SCREENSHOT='+base64.b64encode(out.getvalue()).decode())
+          finally:
+              library.destroy()
+              app.close()
+          PY
       - name: Build verified code update
         run: python build_release.py
       - name: Build self-contained source installer ZIP
