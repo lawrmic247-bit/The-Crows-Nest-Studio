@@ -297,9 +297,9 @@ class ProductionStudio(tk.Toplevel):
                  bg=PANEL,fg=MUTED,font=('Segoe UI',9),
                  anchor='e').pack(side='right',padx=(10,0))
         listing=tk.Frame(queue,bg=NAVY)
-        listing.pack(fill='both',expand=True,pady=(0,11))
+        listing.pack(fill='x',expand=False,pady=(0,11))
         self.list=ttk.Treeview(listing,style='Queue.Treeview',
-                     columns=('state','duration'),show='tree headings',height=11)
+                     columns=('state','duration'),show='tree headings',height=7)
         self.list.heading('#0',text='PRODUCTION')
         self.list.column('#0',width=490)
         self.list.heading('state',text='STAGE')
@@ -308,7 +308,7 @@ class ProductionStudio(tk.Toplevel):
         self.list.column('duration',width=90,anchor='center')
         scroll=ttk.Scrollbar(listing,command=self.list.yview)
         self.list.configure(yscrollcommand=scroll.set)
-        self.list.pack(side='left',fill='both',expand=True)
+        self.list.pack(side='left',fill='x',expand=True)
         scroll.pack(side='left',fill='y')
         self.list.bind('<<TreeviewSelect>>',self._sync_primary)
         self.list.bind('<Double-1>',lambda event:self.primary_action())
