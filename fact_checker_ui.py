@@ -318,6 +318,7 @@ class InlineFactReview(tk.Frame):
 
     def load(self,slug:str,title:str,script:str,source_leads:Path|None=None):
         self.slug=slug
+        self.current_script=script
         self.report=sync_report(slug,title,script)
         self.source_leads=Path(source_leads) if source_leads else None
         self.claims.delete(*self.claims.get_children())
@@ -374,8 +375,7 @@ class InlineFactReview(tk.Frame):
             return
         index=self.selection
         self.load(self.report['slug'],self.report['title'],
-                  '\n\n'.join(x['text'] for x in self.report['claims']),
-                  source_leads=self.source_leads)
+                  self.current_script,source_leads=self.source_leads)
         if index+1<len(self.report['claims']):
             self.claims.selection_set(str(index+1))
             self.claims.see(str(index+1))
