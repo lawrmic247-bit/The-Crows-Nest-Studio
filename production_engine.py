@@ -22,6 +22,7 @@ import uuid
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
+from story_variants import distill_story, available_outputs
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('LOCALAPPDATA') or Path.home()/'.local'/'share')/'TheCrowsNestStudio'
@@ -30,7 +31,7 @@ EPISODES = ROOT/'episodes'
 MEDIA_DIR = DATA/'media'
 LOCK = threading.RLock()
 FORMATS = ('short','wide','both')
-VISUAL_STYLES = ('archival','motion','hybrid')
+VISUAL_STYLES = ('archival','motion','hybrid','ai_reenactment')
 JOB_SCHEMA = 'crowsnest.job.v1'
 STATUSES = ('queued','drafting','gathering_media','awaiting_review','ready','rendering','finished','needs_model','failed')
 MAX_NOTES = 20000
@@ -54,19 +55,22 @@ def atomic_json(path: Path, data: dict):
 
 def create_job(prompt:str, *, minutes:int=5, fmt:str='wide', model:str='qwen3:8b',
                voice:str='kokoro:am_onyx', notes_file:str='', auto_media:bool=True,
-               visual_style:str='archival') -> dict:
+               visual_style:str='archival', deliverables=None) -> dict:
     prompt=' '.join(prompt.strip().split())
     if not 12<=len(prompt)<=3000:raise ValueError('Prompt must contain 12–3000 characters.')
     if not 1<=int(minutes)<=30:raise ValueError('Duration must be 1–30 minutes.')
     if fmt not in FORMATS:raise ValueError('Choose short, wide, or both.')
-    if visual_style not in VISUAL_STYLES:raise ValueError('Choose archival, motion, or hybrid visual style.')
+    if visual_style not in VISUAL_STYLES:raise ValueError('Choose archival, motion, hybrid, or AI reenactment visual style.')
+    if deliverables is None:
+        deliverables={'wide':['full'],'short':['shorts'],'both':['full','shorts','tiktok']}[fmt]
+    deliverables=available_outputs(deliverables)
     if not re.fullmatch(r'[\w.:-]{2,100}',model):raise ValueError('Invalid local model name.')
     if notes_file and (not Path(notes_file).is_file() or Path(notes_file).stat().st_size>512_000):
         raise ValueError('Research notes must be an existing plain-text file under 500 KB.')
     ident=uuid.uuid4().hex[:12]
     job={'id':ident,'prompt':prompt,'title':prompt[:95],'minutes':int(minutes),'format':fmt,
          'model':model,'voice':voice,'notes_file':notes_file,'auto_media':bool(auto_media),
-          'visual_style':visual_style,
+          'visual_style':visual_style,'deliverables':deliverables,'variants':{},
          'status':'queued','created_at':now(),'updated_at':now(),'error':'',
          'manifest':'','media_credits':'','research_leads':'','progress':'Waiting to run','script_words':0,
          'current_step':0}
@@ -88,7 +92,7 @@ def import_chatgpt_job(path: Path, *, source_folder: Path | None=None) -> dict:
     raw=json.loads(path.read_text(encoding='utf-8-sig'))
     if not isinstance(raw,dict) or raw.get('schema')!=JOB_SCHEMA:
         raise ValueError('Unrecognized ChatGPT job format. Expected crowsnest.job.v1.')
-    allowed={'schema','topic','title','minutes','format','visual_style','voice','auto_media','research_notes','script','scenes'}
+    allowed={'schema','topic','title','minutes','format','visual_style','voice','auto_media','research_notes','script','scenes','deliverables'}
     if any(k not in allowed for k in raw):
         raise ValueError('Unrecognized fields in ChatGPT job request.')
     for job in list_jobs():
@@ -106,7 +110,8 @@ def import_chatgpt_job(path: Path, *, source_folder: Path | None=None) -> dict:
     job=create_job(topic,minutes=minutes,fmt=raw.get('format','wide'),
                    voice=raw.get('voice','kokoro:am_onyx'),
                    visual_style=raw.get('visual_style','archival'),
-                   auto_media=raw.get('auto_media',True))
+                   auto_media=raw.get('auto_media',True),
+                   deliverables=raw.get('deliverables'))
     if notes.strip():
         notes_path=QUEUE/(job['id']+'_notes.txt')
         notes_path.write_text(notes,encoding='utf-8')
@@ -387,6 +392,41 @@ def make_research_leads(topic: str, dest: Path) -> Path:
     return dest
 
 
+def create_story_companions(job:dict,main:dict)->dict[str,str]:
+    """Write independently fact-checkable manifests from the same full story."""
+    variants={}
+    outputs=job.get('deliverables') or ['full']
+    if 'full' in outputs:
+        variants['full']=str(EPISODES/(main['slug']+'.json'))
+    for target in ('shorts','tiktok'):
+        if target not in outputs:
+            continue
+        scenes=distill_story(main['scenes'],target)
+        originals=main['scenes']
+        # Reuse original footage when appropriate, but never invent provenance.
+        pointers=(0,len(originals)//2,len(originals)-1)
+        for row,index in zip(scenes,pointers):
+            source=originals[index]
+            if source.get('visual'):
+                row['visual']=source['visual']
+            if source.get('visual_provenance'):
+                row['visual_provenance']=source['visual_provenance']
+        slug=main['slug']+'_'+target
+        short=dict(main)
+        short.update(slug=slug,
+                     title=main['title']+(' — YouTube Short' if target=='shorts' else ' — TikTok'),
+                     deliverable=target,approved=False,scenes=scenes,
+                     review_notice='Condensed version. Verify historical context, all claims and rights independently.')
+        path=EPISODES/(slug+'.json')
+        atomic_json(path,short)
+        from fact_checker import sync_report,save_report
+        report=sync_report(slug,short['title'],
+                           '\n\n'.join(x['narration'] for x in scenes))
+        save_report(report)
+        variants[target]=str(path)
+    return variants
+
+
 def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_fetcher=download_commons_images)->dict:
     job=get_job(job_id)
     if job['status']=='finished':raise ValueError('This job is already complete.')
@@ -425,14 +465,19 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
                 'media_sources':[x.get('page_url','') for x in credits if x.get('page_url')],
                 'review_notice':'AI generated UNVERIFIED script; check every factual assertion and media license before final render.',
                 'production_job':job_id,'narrator':{'voice':job['voice']},'scenes':scenes}
+        manifest['deliverable']='full'
         path=EPISODES/(slug+'.json');atomic_json(path,manifest)
         from fact_checker import sync_report,save_report
         report=sync_report(slug,title,'\n\n'.join(s['narration'] for s in scenes));save_report(report)
+        variants=create_story_companions(job,manifest)
+        if not variants:raise ValueError('No video outputs were selected.')
+        primary=variants.get('full') or next(iter(variants.values()))
         words=sum(len(s['narration'].split()) for s in scenes)
-        # If output is short, disclose the actual estimate rather than assert the requested duration was achieved.
         estimate=round(words/125,1)
-        result=change(job_id,status='awaiting_review',progress=f'Draft ready: {len(scenes)} scenes, {words} words (~{estimate} min). Fact check and media review required.',
-                  manifest=str(path),media_credits=credit_path,research_leads=str(research_leads),script_words=words,error='')
+        result=change(job_id,status='awaiting_review',
+                     progress=f'{len(variants)} drafts: {", ".join(variants)}. Review each for factual and media accuracy.',
+                     manifest=primary,variants=variants,media_credits=credit_path,
+                     research_leads=str(research_leads),script_words=words,error='')
         if progress:progress(result['progress'])
         return result
     except Exception as exc:
