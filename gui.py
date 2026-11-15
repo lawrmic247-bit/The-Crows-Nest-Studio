@@ -404,6 +404,9 @@ class App(tk.Tk):
         speed = self._speed()
         suffix = f'{int(speed * 100):03d}'
         preview = ROOT / 'assets' / 'narration' / 'voice_previews' / f'{voice_slug(voice)}_{suffix}.wav'
+        if preview.is_file() and preview.stat().st_size > 44:
+            self._play_audio(preview)
+            return
         def work():
             self._command([python_bin(), str(ROOT/'narration.py'), '--voice', voice,
                            '--speed', str(speed), '--sample'])
@@ -440,20 +443,36 @@ class App(tk.Tk):
             self.pipe.put(('done',f'{voice} installed. Click HEAR THIS VOICE for a sample.'))
         self._run_task('Installing voice engine/model (internet required once)...',work)
 
-    def play_narration(self):
-        if self.last_preview and self.last_preview.exists():
-            self._open(self.last_preview)
-            return
+    def _play_audio(self,path):
         try:
-            manifest=self._manifest();voice=self._voice();speed=self._speed()
-        except Exception as e:
-            messagebox.showwarning('Missing input',str(e));return
-        def work():
-            preview=self._narrate(manifest,voice,speed)
-            self.pipe.put(('preview',str(preview)))
-            self.pipe.put(('play',str(preview)))
-            self.pipe.put(('done','Narration preview opened.'))
-        self._run_task('Preparing narration playback...',work)
+            backend=self.player.play(path)
+            self.status.set(f'Playing {Path(path).name} with {backend}. Click Stop audio to finish.')
+            self._set_log('Audio playback started: '+str(path)+'\n')
+        except (PlaybackError, OSError, ValueError) as exc:
+            self.status.set('Playback error. Check your sound output.')
+            self._set_log('PLAYBACK ERROR: '+str(exc)+'\n')
+            self.tabs.select(self.activity_page)
+            messagebox.showerror('Voice playback failed',
+                    str(exc)+'\n\nCheck the Windows sound output and run Check setup in Activity & settings.',
+                    parent=self)
+
+    def stop_audio(self):
+        self.player.stop()
+        self.status.set('Playback stopped.')
+
+    def play_narration(self):
+        if self.last_preview and self.last_preview.is_file():
+            self._play_audio(self.last_preview)
+            return
+        self.tabs.select(self.voice_page)
+        messagebox.showinfo('Generate narration first',
+            'Click Generate full narration, then Play generated narration. '
+            'To hear a short sample first, click Hear voice sample.',
+            parent=self)
+
+    def close(self):
+        self.player.stop()
+        self.destroy()
 
     def render(self):
         formats=[fmt for fmt,value in [('short',self.short),('wide',self.wide)] if value.get()]
@@ -581,7 +600,7 @@ class App(tk.Tk):
                     elif kind=='preview':
                         self.last_preview=Path(value)
                     elif kind=='play':
-                        self._open(Path(value))
+                        self._play_audio(Path(value))
                     elif kind=='done':
                         self.status.set(value)
                         self._busy(False)
