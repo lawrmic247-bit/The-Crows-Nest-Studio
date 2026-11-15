@@ -976,6 +976,7 @@ class App(tk.Tk):
         if not new:
             awaiting=[j for j in production_engine.list_jobs()
                       if j.get('source_file') and j['status']=='awaiting_review'
+                      and not j.get('archived')
                       and j['id'] not in self.reviewed_chat_ids]
             if awaiting and not self.pending_chat_job:
                 self.pipe.put(('chat_ready',awaiting[0]['id']))
