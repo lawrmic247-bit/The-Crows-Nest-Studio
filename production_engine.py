@@ -362,12 +362,15 @@ def remove_queue_job(job_id:str)->dict:
     Running work must finish or fail before deletion; no in-flight process
     should have its queue record removed from underneath it.
     """
-    job=get_job(job_id)
-    if job.get('status') in RUNNING_JOB_STATES:
-        raise ValueError('This production is still processing. Finish or stop it before deleting.')
-    # Retain a minimal tombstone so synced ChatGPT inboxes cannot resurrect it.
-    # Keep all original script, audio, footage and output files untouched.
-    return change(job_id,removed=True,removed_at=now())
+    with LOCK:
+        job=get_job(job_id)
+        if job.get('status') in RUNNING_JOB_STATES:
+            raise ValueError('This production is still processing. Finish or stop it before deleting.')
+        # Keep a lightweight tombstone for idempotent synced ChatGPT inbox imports.
+        # No source, narration, research, media, or finished video is removed.
+        job.update(removed=True,removed_at=now(),updated_at=now())
+        atomic_json(job_path(job_id),job)
+        return job
 
 
 def clear_pending_queue()->int:
@@ -380,7 +383,7 @@ def clear_pending_queue()->int:
 
 
 def clear_completed_from_queue()->int:
-    """Archive completed projects without deleting footage or scripts."""
+    """Hide completed projects from the list without deleting footage or scripts."""
     ids=[job['id'] for job in list_jobs()
          if job.get('status') in COMPLETED_JOB_STATES]
     for job_id in ids:
