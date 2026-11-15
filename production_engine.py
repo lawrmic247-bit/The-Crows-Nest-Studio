@@ -427,6 +427,42 @@ def create_story_companions(job:dict,main:dict)->dict[str,str]:
     return variants
 
 
+def _local_reenactments(job:dict,scenes:list[dict],progress=None)->int:
+    """Optional, strictly local AI illustrative scenes. Fail open to archival stills."""
+    if job.get('visual_style')!='ai_reenactment':
+        return 0
+    from update_engine import load_settings
+    config=load_settings()
+    workflow=config.get('comfyui_workflow','')
+    if not workflow:
+        if progress:progress('AI video not configured. Using archival media/title cards instead.')
+        return 0
+    from local_video import LocalVideoError,generate_clip,build_reenactment_prompt,status
+    try:
+        status()
+    except LocalVideoError as exc:
+        if progress:progress(str(exc)+' Falling back to archival media.')
+        return 0
+    count=0
+    # Long films use several short illustrative clips, never pretend 10 minutes
+    # of continuous, authentic period footage was generated.
+    indices=sorted(set((0,len(scenes)//2,max(0,len(scenes)-1))))
+    for i in indices:
+        scene=scenes[i]
+        if progress:progress(f'AI reenactment {count+1}/{len(indices)}: {scene.get("heading","")}')
+        output=MEDIA_DIR/job['id']/f'AI_REENACTMENT_{i+1:02}.mp4'
+        try:
+            clip=generate_clip(build_reenactment_prompt(
+                str(scene.get('heading','')),job['prompt']),Path(workflow),output)
+        except (LocalVideoError,urllib.error.URLError,OSError,ValueError) as exc:
+            if progress:progress('AI clip skipped: '+str(exc)[:200])
+            continue
+        scene['visual']=str(clip)
+        scene['visual_provenance']='AI-generated illustration — not actual historical footage'
+        count+=1
+    return count
+
+
 def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_fetcher=download_commons_images)->dict:
     job=get_job(job_id)
     if job['status']=='finished':raise ValueError('This job is already complete.')
@@ -458,6 +494,9 @@ def run_job(job_id:str, *,progress=None,script_generator=generate_scenes,media_f
                 credit_path=str(source_path)
             except (urllib.error.URLError,TimeoutError,OSError,ValueError,RuntimeError) as exc:
                 if progress:progress('Image lookup unavailable. Using title cards: '+str(exc)[:250])
+        if job.get('visual_style')=='ai_reenactment':
+            emit('gathering_media','Preparing optional local illustrative AI reenactments...')
+            _local_reenactments(job,scenes,progress=progress)
         title=job['title'].strip();slug=slugify(title)+'_'+job_id[:6]
         research_leads=make_research_leads(job['prompt'],MEDIA_DIR/job_id/'research_leads.json')
         manifest={'slug':slug,'title':title,'description':'Independent, unofficial military documentary. Research and fact checking required before publication.',
