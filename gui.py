@@ -10,7 +10,7 @@ from voice_profiles import list_profiles
 from voice_studio_ui import VoiceStudio
 import production_engine as production_engine
 from production_ui import ProductionStudio, open_text_model_setup
-from fact_checker_ui import FactCheckDialog
+from fact_checker_ui import FactCheckDialog, InlineFactReview
 import update_engine
 
 ROOT = Path(__file__).resolve().parent
@@ -394,6 +394,8 @@ class App(tk.Tk):
         self.script.pack(fill='both',expand=True,pady=(6,12))
         self.script.bind('<KeyRelease>',lambda event:self._script_edited())
         self._loaded_script_snapshot=''
+        self.fact_panel=InlineFactReview(review_page,on_saved=self._evidence_saved)
+        self.fact_panel.pack(fill='x',pady=(16,18))
         bottom=tk.Frame(review_page,bg=INK)
         bottom.pack(fill='x',pady=(5,8))
         tk.Label(bottom,text='Source-led review is required before narration.',bg=INK,fg=MUTED,
@@ -590,6 +592,9 @@ class App(tk.Tk):
         self.voice_approved.set(False)
         self.topic_var.set('')
         self.title_var.set('Untitled documentary')
+        self.fact_panel.slug=None
+        self.fact_panel.claims.delete(*self.fact_panel.claims.get_children())
+        self.fact_panel.summary.set('Load a researched documentary to review evidence.')
         self.model_status.set('Choose your local model before beginning the next documentary.')
         self.script.delete('1.0','end')
         self._loaded_script_snapshot=''
@@ -647,6 +652,7 @@ class App(tk.Tk):
             require_clearance(doc['slug'],script)
         except (ValueError,OSError,KeyError) as exc:
             self._block_step('SOURCE REVIEW NEEDED — '+str(exc)[:190])
+            self.fact_check()
             return False
         self.fact_review_complete=True
         self._loaded_script_snapshot=self.script.get('1.0','end').strip()
@@ -1243,7 +1249,8 @@ class App(tk.Tk):
             if ident==__import__('production_engine').get_job(job_id)['voice']:
                 self.voice_var.set(label);break
         self._set_log(f'Loaded production job {job_id}. Review claims in FACT CHECK, check footage rights, then narrate and render.\n')
-        self.tabs.select(self.write_page)
+        self._go(1)
+        self.fact_check()
         self.lift()
         # A draft loaded into the editor has left the production queue.
         # Preserve every source, manuscript and storyboard in the library.
@@ -1453,22 +1460,38 @@ class App(tk.Tk):
             self.pipe.put(('done',f'Rendered {len(formats)} MP4 format(s). Open Preview & publish to inspect.'))
         self._run_task('Rendering MP4 video...',work)
 
+    def _evidence_saved(self):
+        self.fact_review_complete=False
+        self._block_step('Evidence saved. Complete all claims, then use Continue to clear this stage.')
+
     def fact_check(self):
+        """Refresh the built-in Step 2 evidence desk; never open another window."""
         try:
             manifest=self._manifest()
             data=json.loads(manifest.read_text(encoding='utf-8'))
             script='\n\n'.join(scene.get('narration','') for scene in data['scenes'])
-        except (ValueError,OSError) as error:
-            messagebox.showwarning('Script needed',str(error));return
+        except (ValueError,OSError) as exc:
+            self._block_step('SCRIPT REQUIRED — '+str(exc)[:150])
+            return
         leads=None
         if self.loaded_production_job:
             try:
                 record=production_engine.get_job(self.loaded_production_job)
                 candidate=record.get('research_leads','')
-                if candidate and Path(candidate).is_file():leads=Path(candidate)
+                if candidate and Path(candidate).is_file():
+                    leads=Path(candidate)
             except (OSError,ValueError,KeyError):
                 pass
-        FactCheckDialog(self,data['slug'],data['title'],script,source_leads=leads)
+        self.fact_panel.load(data['slug'],data['title'],script,source_leads=leads)
+        self._go(1)
+        self.review_page.update_idletasks()
+        # Page scrolls to the evidence desk; the source and script remain above it.
+        try:
+            canvas=self._page_scroll_canvases[1]
+            total=max(1,self.review_page.winfo_height())
+            canvas.yview_moveto(min(1,self.fact_panel.winfo_y()/total))
+        except (tk.TclError,ValueError):
+            pass
 
     def display_comfort(self):
         """Light/dark and text scaling are preferences, applied on next launch."""
