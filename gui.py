@@ -1003,7 +1003,7 @@ class App(tk.Tk):
                 'You have unsaved changes. Save the current version before loading another?',
                 parent=self)
             if answer is None:
-                return
+                return False
             if answer:
                 self._manifest()
                 self._loaded_script_snapshot=self.script.get('1.0','end').strip()
@@ -1029,6 +1029,15 @@ class App(tk.Tk):
         self._set_log(f'Loaded production job {job_id}. Review claims in FACT CHECK, check footage rights, then narrate and render.\n')
         self.tabs.select(self.write_page)
         self.lift()
+        # A draft loaded into the editor has left the production queue.
+        # Preserve every source, manuscript and storyboard in the library.
+        try:
+            job=production_engine.get_job(job_id)
+            if job.get('status') in production_engine.REVIEW_JOB_STATES:
+                production_engine.archive_job(job_id)
+        except (OSError,ValueError,KeyError):
+            pass
+        return True
 
     def refresh_voices(self):
         for prof in list_profiles():
