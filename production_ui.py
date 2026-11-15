@@ -26,9 +26,14 @@ class ProductionStudio(tk.Toplevel):
         self.on_load=on_load
         self.busy=False
         self.notes=tk.StringVar(value='')
-        self.minutes=tk.IntVar(value=8)
+        self.minutes=tk.IntVar(value=10)
         self.fmt=tk.StringVar(value='wide')
         self.visual_style=tk.StringVar(value='archival')
+        self.want_full=tk.BooleanVar(value=True)
+        self.want_shorts=tk.BooleanVar(value=True)
+        self.want_tiktok=tk.BooleanVar(value=True)
+        self.output_choice=tk.StringVar(value='Full documentary')
+        self.workflow_path=tk.StringVar(value=update_engine.load_settings().get('comfyui_workflow',''))
         self.inbox_dir=tk.StringVar(value=update_engine.load_settings().get('chatgpt_inbox',''))
         self.model=tk.StringVar(value='qwen3:8b')
         self.voice=tk.StringVar(value=default_voice)
@@ -64,7 +69,7 @@ class ProductionStudio(tk.Toplevel):
         inbox=tk.Frame(self.tabs,bg=NAVY,padx=18,pady=18)
         self.tabs.add(inbox,text='3. ChatGPT inbox')
         self.queue_page=queue
-        self._heading(create,'Describe the episode you want',13)
+        self._heading(create,'One topic. A full video and punchy short versions.',15)
         tk.Label(create,text='Include the topic, angle, key events, and style. '
                  'The generated script will still require source review.',
                  bg=NAVY,fg=MUTED,wraplength=850,justify='left',
@@ -76,11 +81,25 @@ class ProductionStudio(tk.Toplevel):
         self.prompt.insert('1.0',"Explore the history of the crow's nest lookout, from sailing ships to modern naval operations. Explain how responsibilities and equipment changed without inventing events or quotations.")
         basic=tk.Frame(create,bg=NAVY);basic.pack(fill='x',pady=(0,15))
         self._field(basic,'Length (minutes)',self.minutes,values=[1,2,3,5,8,10,12,15,20,30],width=9)
-        self._field(basic,'Video shape',self.fmt,values=['short','wide','both'],width=12)
-        self._field(basic,'Visual style',self.visual_style,values=['archival','motion','hybrid'],width=14)
+        self._field(basic,'Visual style',self.visual_style,
+                    values=['archival','motion','hybrid','ai_reenactment'],width=18)
+        deliver=tk.Frame(create,bg=PANEL,padx=14,pady=12)
+        deliver.pack(fill='x',pady=(0,14))
+        tk.Label(deliver,text='CREATE FROM THE SAME RESEARCH',bg=PANEL,fg=CREAM,
+                 font=('Segoe UI',11,'bold')).pack(anchor='w',pady=(0,7))
+        outputs=tk.Frame(deliver,bg=PANEL);outputs.pack(fill='x')
+        for label,var in (
+            ('Full video • YouTube 16:9',self.want_full),
+            ('YouTube Short • vertical 9:16',self.want_shorts),
+            ('TikTok • punchy vertical 9:16',self.want_tiktok),
+        ):
+            tk.Checkbutton(outputs,text=label,variable=var,bg=PANEL,fg=CREAM,
+                activeforeground=CREAM,activebackground=PANEL,selectcolor=INK,
+                font=('Segoe UI',10)).pack(anchor='w',pady=(3,3))
 
-        tk.Label(create,text='Archival = authentic photos. Motion = gentle movement on licensed stills. '
-                 'Hybrid = photos and documentary title cards. No invented battle footage.',
+        tk.Label(create,text='Archival uses photos. Motion animates those photos. Hybrid adds branded cards. '
+                 'AI reenactment sends a few illustrative shots to YOUR local ComfyUI if configured. '
+                 'It never represents generated scenes as archival evidence.',
                  bg=NAVY,fg=MUTED,font=('Segoe UI',10),wraplength=875,
                  justify='left').pack(anchor='w',pady=(0,13))
         self.advanced=tk.Frame(create,bg=NAVY)
@@ -110,7 +129,15 @@ class ProductionStudio(tk.Toplevel):
         tk.Label(create,text='New episodes are unverified drafts until you review their evidence.',
                  bg=NAVY,fg=MUTED,font=('Segoe UI',10)).pack(anchor='w',pady=(8,0))
 
-        self._heading(queue,'Your episodes',13)
+        self._heading(queue,'Your episodes — review every output',15)
+        select_row=tk.Frame(queue,bg=NAVY);select_row.pack(fill='x',pady=(0,10))
+        tk.Label(select_row,text='Version to edit:',bg=NAVY,fg=CREAM,
+                 font=('Segoe UI',10,'bold')).pack(side='left',padx=(0,12))
+        ttk.Combobox(select_row,textvariable=self.output_choice,state='readonly',
+               values=['Full documentary','YouTube Short','TikTok'],
+               width=23).pack(side='left')
+        tk.Label(select_row,text='Each version has its own source-review checklist.',
+                 bg=NAVY,fg=MUTED,font=('Segoe UI',10)).pack(side='left',padx=(12,0))
         tk.Label(queue,text='Select an episode to open its draft, view research leads, '
                  'or inspect media credits.',bg=NAVY,fg=MUTED,
                  font=('Segoe UI',11),wraplength=900,justify='left').pack(
@@ -166,8 +193,45 @@ class ProductionStudio(tk.Toplevel):
                  justify='left').pack(anchor='w',pady=(0,12))
         ttk.Button(inbox,text='View production queue',
                    command=lambda:self.tabs.select(self.queue_page)).pack(anchor='w')
+        self._heading(inbox,'Optional: unlimited local AI reenactment clips',13)
+        tk.Label(inbox,text='Works with compatible AMD/ROCm or NVIDIA/CUDA hardware '
+                 'and a local ComfyUI workflow with a __CROWS_PROMPT__ placeholder. '
+                 'Generates illustrative shots, not authentic historical footage.',
+                 bg=NAVY,fg=MUTED,font=('Segoe UI',10),wraplength=850,
+                 justify='left').pack(anchor='w',pady=(0,7))
+        setrow=tk.Frame(inbox,bg=NAVY);setrow.pack(fill='x',pady=(0,8))
+        ttk.Entry(setrow,textvariable=self.workflow_path).pack(
+            side='left',fill='x',expand=True)
+        ttk.Button(setrow,text='Choose ComfyUI workflow',
+                   command=self.choose_workflow).pack(side='left',padx=(8,0))
+        ttk.Button(inbox,text='Check local AI engine',command=self.check_local_video).pack(
+            anchor='w',pady=(0,10))
         self.refresh()
         self.after(30000,self._scan_inbox_timer)
+
+    def choose_workflow(self):
+        file=filedialog.askopenfilename(parent=self,
+              title='Choose ComfyUI workflow in API JSON format',
+              filetypes=[('API workflow JSON','*.json')])
+        if not file:return
+        try:
+            from local_video import load_workflow
+            load_workflow(Path(file))
+            self.workflow_path.set(file)
+            settings=update_engine.load_settings()
+            settings['comfyui_workflow']=file
+            update_engine.save_settings(settings)
+            self._log('AI video workflow saved. Generated scenes remain illustrative.')
+        except (ValueError,OSError) as exc:
+            messagebox.showerror('Unsupported workflow',str(exc),parent=self)
+
+    def check_local_video(self):
+        from local_video import status,LocalVideoError
+        try:
+            self._log(status())
+            messagebox.showinfo('Local video generator',status(),parent=self)
+        except LocalVideoError as exc:
+            messagebox.showwarning('ComfyUI unavailable',str(exc),parent=self)
 
     def choose_inbox(self):
         folder=filedialog.askdirectory(parent=self,title='Select locally synced Google Drive job inbox')
@@ -247,12 +311,19 @@ class ProductionStudio(tk.Toplevel):
 
     def add_job(self):
         try:
-            j=engine.create_job(self.prompt.get('1.0','end'),minutes=self.minutes.get(),fmt=self.fmt.get(),
+            deliverables=[key for key,flag in (
+                ('full',self.want_full),('shorts',self.want_shorts),('tiktok',self.want_tiktok))
+                if flag.get()]
+            video_format=('both' if len(deliverables)>1 else
+                          'wide' if deliverables==['full'] else 'short')
+            j=engine.create_job(self.prompt.get('1.0','end'),
+                minutes=self.minutes.get(),fmt=video_format,
                 model=self.model.get(),voice=self.voice.get(),notes_file=self.notes.get(),
-                auto_media=self.media.get(),visual_style=self.visual_style.get())
+                auto_media=self.media.get(),visual_style=self.visual_style.get(),
+                deliverables=deliverables)
         except Exception as exc:messagebox.showerror('Invalid production request',str(exc),parent=self);return
         self.refresh(j['id']);self.tabs.select(self.queue_page);self._log('Added '+j['id']+' to the production queue.')
-        if self.start_immediately:self._run([j['id']])
+        if self.start_immediately.get():self._run([j['id']])
 
     def _selection(self):
         ids=self.list.selection()
@@ -296,8 +367,17 @@ class ProductionStudio(tk.Toplevel):
         job=engine.get_job(jid)
         if not job.get('manifest'):
             messagebox.showinfo('Not yet drafted','Run this job to generate a script first.',parent=self);return
+        selections={'Full documentary':'full','YouTube Short':'shorts','TikTok':'tiktok'}
+        requested=selections.get(self.output_choice.get(),'full')
+        manifests=job.get('variants',{})
+        chosen=manifests.get(requested)
+        if not chosen:
+            names=', '.join(manifests) if manifests else 'default'
+            messagebox.showwarning('Version not generated',
+                f'This episode has: {names}. Choose a generated output above.',parent=self)
+            return
         if self.on_load:
-            try:self.on_load(Path(job['manifest']),jid)
+            try:self.on_load(Path(chosen),jid)
             except Exception as exc:messagebox.showerror('Unable to load script',str(exc),parent=self);return
             self._log('Loaded draft into the editor. Review source evidence in FACT CHECK before final rendering.')
         else:self._open(Path(job['manifest']))
