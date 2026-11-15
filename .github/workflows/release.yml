@@ -116,6 +116,41 @@ jobs:
           app.close()
           print('All eight pages have scrollbars and respond to wheel events.')
           PY
+      - name: Smoke test research-first Quick AI and source review
+        run: |
+          xvfb-run -a python - <<'PY'
+          import json,tempfile
+          from pathlib import Path
+          from unittest.mock import patch
+          from gui import App
+          from fact_checker_ui import FactCheckDialog
+          app=App()
+          with patch('gui.simpledialog.askstring',return_value='Donald Ballard Medal of Honor'), \
+               patch('gui.simpledialog.askinteger',return_value=10), \
+               patch('gui.filedialog.askopenfilename',side_effect=AssertionError('Unexpected research notes prompt')), \
+               patch('gui.production_engine.create_job',return_value={'id':'aabbccddeeff'}), \
+               patch.object(app,'_run_task') as run:
+              app.prompt_draft()
+              assert run.call_count==1
+          with tempfile.TemporaryDirectory() as directory:
+              path=Path(directory)/'sources.json'
+              path.write_text(json.dumps({'retrieved_sources':[{
+                  'title':'Donald Ballard','publisher':'Wikipedia',
+                  'url':'https://en.wikipedia.org/wiki/Donald_E._Ballard',
+                  'excerpt':'Search discovery lead; not verified','verified':False
+              }]}),encoding='utf-8')
+              review=FactCheckDialog(app,'ci-research','Research Check',
+                                     'Donald Ballard served as a Navy corpsman in Vietnam.',
+                                     source_leads=path)
+              review.open_research_sources()
+              review.update_idletasks()
+              viewers=[w for w in review.winfo_children() if w.winfo_class()=='Toplevel']
+              assert len(viewers)==1
+              viewers[0].destroy()
+              review.destroy()
+          app.close()
+          print('Quick AI opens no notes picker; discovered sources display in fact checker.')
+          PY
       - name: Build verified code update
         run: python build_release.py
       - name: Build self-contained source installer ZIP
