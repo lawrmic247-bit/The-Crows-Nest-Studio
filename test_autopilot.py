@@ -41,6 +41,10 @@ class NarratorTextTests(unittest.TestCase):
             with patch.object(narration,'PRONUNCIATION_FILE',guide):
                 self.assertEqual(narration.normalize_for_speech('Okinawa and Nassau'),
                                  'Oh-kee-nah-wah and Nass-ow')
+                old_path=narration.sample_preview_path('kokoro:am_onyx')
+                guide.write_text(json.dumps({'Okinawa':'Oak-in-ah-wah'}),encoding='utf-8')
+                new_path=narration.sample_preview_path('kokoro:am_onyx')
+                self.assertNotEqual(old_path,new_path)
             self.assertTrue(guide.is_file())
 
 
