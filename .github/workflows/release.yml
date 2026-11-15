@@ -267,9 +267,10 @@ jobs:
           from gui import App
           from production_ui import ProductionStudio
           app=App()
-          app.geometry('1160x830+0+0')
+          app.withdraw()
           library=ProductionStudio(app)
           library.geometry('1060x800+0+0')
+          library.deiconify()
           library.attributes('-topmost',True)
           library.lift()
           library.focus_force()
