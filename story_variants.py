@@ -49,8 +49,8 @@ def distill_story(scenes:list[dict],target:str)->list[dict]:
         words+=length
         if words>=limit-17:
             break
-    if words<24:
-        raise ValueError("Insufficient source narrative to make an accurate short")
+    if words<8:
+        raise ValueError("Insufficient source narrative to make even a brief short")
     remainder=[sentences[i] for i in sorted(set(choices)-{hook})]
     split=max(1,len(remainder)//2)
     chapters=(("The Hook",sentences[hook]),
