@@ -370,6 +370,15 @@ def remove_queue_job(job_id:str)->dict:
     return change(job_id,removed=True,removed_at=now())
 
 
+def clear_pending_queue()->int:
+    """Clear only waiting/failed queue records; never interrupt active work."""
+    ids=[job['id'] for job in list_jobs()
+         if job.get('status') in ('queued','failed','needs_model')]
+    for job_id in ids:
+        remove_queue_job(job_id)
+    return len(ids)
+
+
 def clear_completed_from_queue()->int:
     """Archive completed projects without deleting footage or scripts."""
     ids=[job['id'] for job in list_jobs()
