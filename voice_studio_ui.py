@@ -9,16 +9,16 @@ from voice_profiles import (PROFILE_DIR, APPDATA, DEFAULT_ACTING, create_profile
                             get_audio,get_profile,list_profiles,clean_recording,update_profile)
 
 SOFT_LIGHT=update_engine.load_settings().get('appearance')=='soft_light'
-NAVY='#f2f5f2' if SOFT_LIGHT else '#202a33'
-PANEL='#dfe7e2' if SOFT_LIGHT else '#303d49'
-GOLD='#477669' if SOFT_LIGHT else '#9fc5bc'
-CREAM='#23382f' if SOFT_LIGHT else '#e0e6e8'
-MUTED='#50695f' if SOFT_LIGHT else '#bac7ce'
+NAVY='#F1F4F4' if SOFT_LIGHT else '#0C121B'
+PANEL='#FFFFFF' if SOFT_LIGHT else '#182330'
+GOLD='#2F6758' if SOFT_LIGHT else '#D7B47B'
+CREAM='#253640' if SOFT_LIGHT else '#EDF2F4'
+MUTED='#60747C' if SOFT_LIGHT else '#A1B1BD'
 
 class VoiceStudio(tk.Toplevel):
     def __init__(self, parent, on_use=None):
         super().__init__(parent)
-        self.title("The Crow's Nest | Voice Studio")
+        self.title("The Crow's Nest | Audio Department")
         self.geometry('950x750')
         self.minsize(735,570)
         self.configure(bg=NAVY)
@@ -36,7 +36,7 @@ class VoiceStudio(tk.Toplevel):
         style.configure('Voice.TNotebook',background=NAVY,borderwidth=0)
         style.configure('Voice.TNotebook.Tab',font=('Segoe UI',11),padding=(17,11),
                         background=PANEL,foreground=CREAM)
-        style.map('Voice.TNotebook.Tab',background=[('selected','#446059')],
+        style.map('Voice.TNotebook.Tab',background=[('selected','#2E4C53')],
                   foreground=[('selected','#ffffff')])
         style.configure('Voice.TButton',font=('Segoe UI',10),padding=(12,9))
         style.configure('Voice.TEntry',font=('Segoe UI',11),padding=6)
@@ -44,8 +44,10 @@ class VoiceStudio(tk.Toplevel):
 
         header=tk.Frame(self,bg=NAVY,padx=22,pady=16)
         header.pack(fill='x')
-        tk.Label(header,text='Voice Studio',bg=NAVY,fg=CREAM,
-                 font=('Segoe UI',23,'bold')).pack(anchor='w')
+        tk.Label(header,text='02 / AUDIO DEPARTMENT',bg=NAVY,fg=GOLD,
+                 font=('Segoe UI',9,'bold')).pack(anchor='w')
+        tk.Label(header,text='Narration & voice direction',bg=NAVY,fg=CREAM,
+                 font=('Segoe UI',23,'bold')).pack(anchor='w',pady=(6,2))
         tk.Label(header,text='Record  •  Listen  •  Refine  •  Use your own voice',
                  bg=NAVY,fg=MUTED,font=('Segoe UI',11)).pack(anchor='w',pady=(3,0))
 
