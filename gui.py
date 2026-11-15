@@ -5,8 +5,7 @@ import json, os, queue, re, subprocess, sys, threading, tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 from fact_checker import require_clearance, status_summary, sync_report
-from narration import voice_slug
-from audio_playback import AudioPlayer, PlaybackError
+from narration import voice_slug, AudioPlayer, PlaybackError
 from voice_profiles import list_profiles
 from voice_studio_ui import VoiceStudio
 from production_ui import ProductionStudio
