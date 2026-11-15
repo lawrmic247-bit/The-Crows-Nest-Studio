@@ -508,7 +508,17 @@ class ProductionStudio(tk.Toplevel):
             self.refresh(ids[-1])
             self.tabs.select(self.queue_page)
             if self.start_immediately.get() and not self.busy:
-                self._run(ids)
+                selected=update_engine.load_settings().get('ollama_model','')
+                try:
+                    installed=engine.list_local_models()
+                except engine.OllamaSetupError:
+                    installed=[]
+                if not selected or selected not in installed:
+                    self._log('Writing model must be selected in Step 1 before imported jobs start.')
+                else:
+                    for ident in ids:
+                        engine.change(ident,model=selected)
+                    self._run(ids)
         elif not silent:self._log('No new ChatGPT jobs in this folder.')
         if errors and not silent:
             messagebox.showwarning('Unrecognized inbox files',
