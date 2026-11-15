@@ -19,7 +19,7 @@ class NarratorTextTests(unittest.TestCase):
         self.assertEqual(narration.normalize_for_speech('May 16, 1968'),
                          'May sixteenth, nineteen sixty-eight')
         self.assertEqual(narration.normalize_for_speech('16 May 1968'),
-                         'sixteenth May nineteen sixty-eight')
+                         'the sixteenth of May, nineteen sixty-eight')
         self.assertEqual(narration.normalize_for_speech('5/16/1968'),
                          '5/16/1968')
         spoken=narration.normalize_for_speech(
