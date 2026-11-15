@@ -89,11 +89,16 @@ class ResearchDiscoveryTests(unittest.TestCase):
         source=inspect.getsource(engine.run_job)
         self.assertNotIn("_local_reenactments(",source)
         self.assertIn("discover_research(",source)
-        # The fact-review gate lives in the renderer before local AI generation.
+        # Rendering itself must not add new media after rights approval.
+        # Stage 4 creates illustrative assets BEFORE user confirms their rights.
         import studio
         render_source=inspect.getsource(studio.render)
-        self.assertLess(render_source.index("fact_path=require_clearance("),
-                        render_source.index("_local_reenactments("))
+        self.assertNotIn("_local_reenactments(",render_source)
+        self.assertIn("ai_visuals_prepared",render_source)
+        from gui import App
+        visual_source=inspect.getsource(App.prepare_ai_visuals)
+        self.assertLess(visual_source.index("require_clearance("),
+                        visual_source.index("_local_reenactments("))
 
 
 if __name__=="__main__":
