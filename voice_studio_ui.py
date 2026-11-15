@@ -4,10 +4,16 @@ import os, subprocess, sys, tempfile, threading, tkinter as tk, wave
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk, scrolledtext
 from narration import AudioPlayer, PlaybackError
+import update_engine
 from voice_profiles import (PROFILE_DIR, APPDATA, DEFAULT_ACTING, create_profile,
                             get_audio,get_profile,list_profiles,clean_recording,update_profile)
 
-NAVY='#202a33';PANEL='#303d49';GOLD='#9fc5bc';CREAM='#e0e6e8';MUTED='#bac7ce'
+SOFT_LIGHT=update_engine.load_settings().get('appearance')=='soft_light'
+NAVY='#f2f5f2' if SOFT_LIGHT else '#202a33'
+PANEL='#dfe7e2' if SOFT_LIGHT else '#303d49'
+GOLD='#477669' if SOFT_LIGHT else '#9fc5bc'
+CREAM='#23382f' if SOFT_LIGHT else '#e0e6e8'
+MUTED='#50695f' if SOFT_LIGHT else '#bac7ce'
 
 class VoiceStudio(tk.Toplevel):
     def __init__(self, parent, on_use=None):
