@@ -141,7 +141,7 @@ def generate_clip(prompt:str,workflow:Path,out:Path,*,urlopen=None,
                 raw=_request(route,urlopen=urlopen,limit=MAX_BYTES,timeout=120)
                 if len(raw)<1000:
                     raise LocalVideoError("ComfyUI exported an empty video.")
-                out=Path(out)
+                out=Path(out).with_suffix(suffix)
                 out.parent.mkdir(parents=True,exist_ok=True)
                 tmp=out.with_suffix(out.suffix+".partial")
                 tmp.write_bytes(raw)
