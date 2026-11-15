@@ -154,8 +154,12 @@ class App(tk.Tk):
         self.chat_ready_button=ttk.Button(prompt_bar,text='Review ChatGPT draft',
                    state='disabled',command=self.open_chat_ready)
         self.chat_ready_button.pack(side='left',padx=(10,0))
-        ttk.Button(create,text='View discovered research sources',
-                   command=self.open_research_sources).pack(anchor='w',pady=(0,11))
+        research_actions=tk.Frame(create,bg=INK)
+        research_actions.pack(fill='x',pady=(0,11))
+        ttk.Button(research_actions,text='View discovered research sources',
+                   command=self.open_research_sources).pack(side='left',padx=(0,9))
+        ttk.Button(research_actions,text='Send script to Fact Checker',
+                   command=self.fact_check).pack(side='left')
         self._label(create,'Episode title')
         self.title_var=tk.StringVar(value="The History of the Crow's Nest")
         ttk.Entry(create,textvariable=self.title_var,font=('Segoe UI',12)).pack(
