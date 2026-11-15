@@ -209,6 +209,12 @@ jobs:
               with patch.object(engine,'QUEUE',Path(tmp)/'queue'):
                   app=App()
                   studio=ProductionStudio(app,on_load=lambda path,jid:True)
+                  studio.geometry('1060x800+0+0')
+                  studio.update()
+                  assert studio.primary_btn.winfo_ismapped()
+                  assert (studio.primary_btn.winfo_rooty()
+                          < studio.winfo_rooty()+studio.winfo_height()-45), (
+                              'Continue button must stay visible without scrolling at 800px height')
                   waiting=engine.create_job('The documented history of Navy hospital corpsmen')
                   studio.stage_view.set('Needs work')
                   studio.refresh(waiting['id'])
