@@ -406,6 +406,26 @@ def discover_research(topic:str,*,fetch=None)->dict:
         except (OSError,TimeoutError,ValueError,TypeError,KeyError,
                 urllib.error.HTTPError,urllib.error.URLError) as exc:
             warnings.append(label+" temporarily unavailable: "+str(exc)[:150])
+    # Expand the strongest encyclopedia leads into useful research context.
+    # These remain secondary sources and must not be treated as verified proof.
+    wiki_items=[item for item in sources if item['publisher']=='Wikipedia'][:2]
+    for item in wiki_items:
+        title=item['title'].replace(' ','_')
+        extract_url=('https://en.wikipedia.org/w/api.php?' +
+                     urllib.parse.urlencode({
+                         'action':'query','prop':'extracts','explaintext':'1',
+                         'format':'json','formatversion':'2',
+                         'exchars':'4200','titles':title}))
+        try:
+            doc=_research_json(extract_url,fetch=fetch)
+            pages=doc.get('query',{}).get('pages',[])
+            if pages and isinstance(pages,list):
+                content=str(pages[0].get('extract','')).strip()
+                if len(content)>len(item.get('excerpt','')):
+                    item['excerpt']=content[:4200]
+        except (OSError,TimeoutError,ValueError,TypeError,KeyError,
+                urllib.error.HTTPError,urllib.error.URLError):
+            pass
     return {"topic":topic,"query":query,"retrieved_at":now(),
             "sources":sources,"warnings":warnings,
             "notice":"AUTOMATED DISCOVERY ONLY. None of these sources verifies any claim. "
@@ -422,7 +442,7 @@ def research_brief(report:dict)->str:
     for idx,item in enumerate(report.get("sources",[])[:9],1):
         sections.append(f"\nSOURCE LEAD {idx} [{item['publisher']}, {item['type']}]: "
                         f"{item['title']}\nURL: {item['url']}\n"
-                        f"RETRIEVED SUMMARY (UNVERIFIED): {item.get('excerpt','')[:650]}")
+                        f"RETRIEVED SUMMARY (UNVERIFIED): {item.get('excerpt','')[:1800]}")
     if not report.get("sources"):
         sections.append("\nNo external sources returned. Do NOT invent dates, names or numbers.")
     return "\n".join(sections)[:MAX_NOTES]
