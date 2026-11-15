@@ -206,7 +206,7 @@ def import_chatgpt_job(path: Path, *, source_folder: Path | None=None) -> dict:
     allowed={'schema','topic','title','minutes','format','visual_style','voice','auto_media','research_notes','script','scenes','deliverables'}
     if any(k not in allowed for k in raw):
         raise ValueError('Unrecognized fields in ChatGPT job request.')
-    for job in list_jobs():
+    for job in list_jobs(include_removed=True):
         if job.get('source_file')==str(path):
             return job
     topic=raw.get('topic','')
@@ -288,11 +288,14 @@ def get_job(job_id:str)->dict:
     return obj
 
 
-def list_jobs()->list[dict]:
+def list_jobs(*,include_removed:bool=False)->list[dict]:
     if not QUEUE.exists():return []
     jobs=[]
     for p in QUEUE.glob('*.json'):
-        try:jobs.append(get_job(p.stem))
+        try:
+            job=get_job(p.stem)
+            if include_removed or not job.get('removed'):
+                jobs.append(job)
         except (OSError,ValueError,KeyError):pass
     return sorted(jobs,key=lambda x:x['created_at'],reverse=True)
 
@@ -359,21 +362,20 @@ def remove_queue_job(job_id:str)->dict:
     Running work must finish or fail before deletion; no in-flight process
     should have its queue record removed from underneath it.
     """
-    with LOCK:
-        job=get_job(job_id)
-        if job.get('status') in RUNNING_JOB_STATES:
-            raise ValueError('This production is still processing. Finish or stop it before deleting.')
-        path=job_path(job_id)
-        path.unlink()
-        return job
+    job=get_job(job_id)
+    if job.get('status') in RUNNING_JOB_STATES:
+        raise ValueError('This production is still processing. Finish or stop it before deleting.')
+    # Retain a minimal tombstone so synced ChatGPT inboxes cannot resurrect it.
+    # Keep all original script, audio, footage and output files untouched.
+    return change(job_id,removed=True,removed_at=now())
 
 
 def clear_completed_from_queue()->int:
     """Archive completed projects without deleting footage or scripts."""
     ids=[job['id'] for job in list_jobs()
-         if job.get('status') in COMPLETED_JOB_STATES and not job.get('archived')]
+         if job.get('status') in COMPLETED_JOB_STATES]
     for job_id in ids:
-        archive_job(job_id)
+        remove_queue_job(job_id)
     return len(ids)
 
 
